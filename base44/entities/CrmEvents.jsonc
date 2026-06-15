@@ -1,0 +1,41 @@
+{
+  "name": "CrmEvents",
+  "type": "object",
+  "properties": {
+    "client_id": {
+      "type": "string",
+      "description": "Reference to the client"
+    },
+    "event_type": {
+      "type": "string",
+      "description": "Type of CRM event"
+    },
+    "raw_payload": {
+      "type": "string",
+      "description": "Raw JSON payload of the event"
+    },
+    "processed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the event has been processed"
+    },
+    "error_message": {
+      "type": "string",
+      "description": "Error message if processing failed"
+    }
+  },
+  "required": [
+    "client_id",
+    "event_type"
+  ],
+  "rls": {
+    "create": false,
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": false,
+    "delete": false
+  }
+}

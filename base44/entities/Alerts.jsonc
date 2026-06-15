@@ -1,0 +1,103 @@
+{
+  "name": "Alerts",
+  "type": "object",
+  "properties": {
+    "client_id": {
+      "type": "string",
+      "description": "Reference to the client"
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "SYNC",
+        "DELIVERY",
+        "WEBHOOK"
+      ],
+      "description": "Source system that triggered the alert"
+    },
+    "source_record_id": {
+      "type": "string",
+      "description": "ID of the triggering record"
+    },
+    "alert_type": {
+      "type": "string",
+      "enum": [
+        "SYNC_FAILED",
+        "DELIVERY_FAILED",
+        "DELIVERY_DELAYED",
+        "WEBHOOK_PROCESSING_FAILED"
+      ],
+      "description": "Type of alert"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "Info",
+        "Warning",
+        "Critical"
+      ],
+      "description": "Severity level"
+    },
+    "title": {
+      "type": "string",
+      "description": "Short alert title"
+    },
+    "message": {
+      "type": "string",
+      "description": "Detailed alert message"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "Open",
+        "Acknowledged",
+        "Resolved"
+      ],
+      "default": "Open",
+      "description": "Current alert status"
+    },
+    "dedupe_key": {
+      "type": "string",
+      "description": "Key used to deduplicate alerts"
+    },
+    "acknowledged_by": {
+      "type": "string",
+      "description": "Email of user who acknowledged"
+    },
+    "acknowledged_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the alert was acknowledged"
+    },
+    "resolved_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the alert was resolved"
+    }
+  },
+  "required": [
+    "source",
+    "alert_type",
+    "severity",
+    "title",
+    "status"
+  ],
+  "rls": {
+    "create": false,
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

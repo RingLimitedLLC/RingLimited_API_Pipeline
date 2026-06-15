@@ -1,0 +1,79 @@
+{
+  "name": "AlertRules",
+  "type": "object",
+  "properties": {
+    "client_id": {
+      "type": "string",
+      "description": "Optional reference to a specific client (empty = applies to all)"
+    },
+    "alert_type": {
+      "type": "string",
+      "enum": [
+        "SYNC_FAILED",
+        "DELIVERY_FAILED",
+        "DELIVERY_DELAYED",
+        "WEBHOOK_PROCESSING_FAILED"
+      ],
+      "description": "Type of alert this rule applies to"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "Info",
+        "Warning",
+        "Critical"
+      ],
+      "description": "Severity level"
+    },
+    "notify_in_app": {
+      "type": "boolean",
+      "default": true,
+      "description": "Send in-app notification"
+    },
+    "notify_email": {
+      "type": "boolean",
+      "default": false,
+      "description": "Send email notification"
+    },
+    "email_recipients": {
+      "type": "string",
+      "description": "Comma-separated list of email recipients"
+    },
+    "cooldown_minutes": {
+      "type": "number",
+      "default": 60,
+      "description": "Minutes to wait before firing the same alert again"
+    },
+    "is_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this rule is active"
+    }
+  },
+  "required": [
+    "alert_type",
+    "severity"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

@@ -1,0 +1,82 @@
+{
+  "name": "AlteryxDeliveryLog",
+  "type": "object",
+  "properties": {
+    "client_id": {
+      "type": "string",
+      "description": "Reference to the client"
+    },
+    "data_type": {
+      "type": "string",
+      "enum": [
+        "contacts",
+        "deals",
+        "companies",
+        "other"
+      ],
+      "description": "Type of data delivered"
+    },
+    "delivery_method": {
+      "type": "string",
+      "enum": [
+        "API Push",
+        "SFTP",
+        "Webhook",
+        "Batch Upload"
+      ],
+      "description": "Method used to deliver data to SharePoint"
+    },
+    "batch_id": {
+      "type": "string",
+      "description": "Unique batch identifier"
+    },
+    "records_sent": {
+      "type": "number",
+      "description": "Number of records sent in this delivery"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "Success",
+        "Failed",
+        "Pending",
+        "Partial"
+      ],
+      "description": "Delivery status"
+    },
+    "error_message": {
+      "type": "string",
+      "description": "Error message if delivery failed"
+    },
+    "delivered_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of delivery"
+    },
+    "alert_created": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether an alert was created for this log"
+    },
+    "alert_id": {
+      "type": "string",
+      "description": "Reference to the created alert"
+    }
+  },
+  "required": [
+    "client_id",
+    "data_type",
+    "delivery_method",
+    "status"
+  ],
+  "rls": {
+    "create": false,
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": false,
+    "delete": false
+  }
+}

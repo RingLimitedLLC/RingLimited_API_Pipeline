@@ -1,0 +1,6 @@
+{
+  "type": "notion",
+  "scopes": [
+    "users:read"
+  ]
+}

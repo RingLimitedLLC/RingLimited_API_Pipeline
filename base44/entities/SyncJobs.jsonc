@@ -1,0 +1,232 @@
+{
+  "name": "SyncJobs",
+  "type": "object",
+  "properties": {
+    "client_id": {
+      "type": "string",
+      "description": "Reference to the client"
+    },
+    "job_name": {
+      "type": "string",
+      "description": "Friendly name for this sync job"
+    },
+    "job_type": {
+      "type": "string",
+      "enum": [
+        "Target",
+        "Conversion",
+        "Suppression"
+      ],
+      "description": "Type of sync job"
+    },
+    "object_type": {
+      "type": "string",
+      "enum": [
+        "Leads",
+        "Contacts",
+        "Deals",
+        "Companies",
+        "Conversions",
+        "Custom"
+      ],
+      "description": "CRM object type to pull"
+    },
+    "custom_object_name": {
+      "type": "string",
+      "description": "Custom object name if object_type is Custom"
+    },
+    "selected_fields": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of CRM source field names to pull"
+    },
+    "field_mappings": {
+      "type": "array",
+      "description": "List of source\u2192destination field mappings",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "CRM source field name"
+          },
+          "destination": {
+            "type": "string",
+            "description": "Destination field name in our schema"
+          }
+        }
+      }
+    },
+    "date_filter_type": {
+      "type": "string",
+      "enum": [
+        "none",
+        "relative",
+        "absolute"
+      ],
+      "default": "none",
+      "description": "Type of date filter to apply when pulling data"
+    },
+    "date_filter_field": {
+      "type": "string",
+      "description": "The CRM field name to filter by date"
+    },
+    "date_filter_relative_days": {
+      "type": "number",
+      "description": "For relative filter: pull records from the last N days"
+    },
+    "date_filter_start": {
+      "type": "string",
+      "format": "date",
+      "description": "For absolute filter: start date (YYYY-MM-DD)"
+    },
+    "date_filter_end": {
+      "type": "string",
+      "format": "date",
+      "description": "For absolute filter: end date (YYYY-MM-DD)"
+    },
+    "campaign_name": {
+      "type": "string",
+      "description": "Campaign name \u2014 used as the SharePoint folder name under Ring Data Ops/DataAutomation/{ClientName}/{CampaignName}"
+    },
+    "product_id": {
+      "type": "string",
+      "description": "Reference to the CampaignProduct this pipeline is assigned to (optional, for Target pipelines)"
+    },
+    "sharepoint_filename": {
+      "type": "string",
+      "description": "CSV filename to use when delivering to SharePoint (without .csv extension)"
+    },
+    "frequency_type": {
+      "type": "string",
+      "enum": [
+        "interval",
+        "daily",
+        "weekly",
+        "custom_days",
+        "monthly",
+        "manual"
+      ],
+      "description": "How the schedule is defined"
+    },
+    "interval_value": {
+      "type": "number",
+      "description": "Number of units for interval/custom_days frequency"
+    },
+    "interval_unit": {
+      "type": "string",
+      "enum": [
+        "minutes",
+        "hours",
+        "days"
+      ],
+      "description": "Unit for interval or custom_days"
+    },
+    "scheduled_time": {
+      "type": "string",
+      "description": "Time of day HH:MM for daily/weekly/monthly schedules"
+    },
+    "scheduled_day": {
+      "type": "string",
+      "description": "Day of week (0-6) for weekly schedule"
+    },
+    "scheduled_dates": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "date"
+      },
+      "description": "List of specific dates (YYYY-MM-DD) for monthly calendar-picked runs"
+    },
+    "is_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this sync job is active"
+    },
+    "last_run_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last time this job ran"
+    },
+    "last_run_status": {
+      "type": "string",
+      "enum": [
+        "Success",
+        "Failed",
+        "Never Run"
+      ],
+      "default": "Never Run",
+      "description": "Result of the last run"
+    },
+    "api_endpoint": {
+      "type": "string",
+      "description": "Full API endpoint URL for this sync job"
+    },
+    "api_method": {
+      "type": "string",
+      "enum": [
+        "GET",
+        "POST"
+      ],
+      "default": "GET",
+      "description": "HTTP method for the API call"
+    },
+    "api_auth_type": {
+      "type": "string",
+      "enum": [
+        "None",
+        "Bearer Token",
+        "API Key Header",
+        "Basic Auth"
+      ],
+      "default": "Bearer Token",
+      "description": "Authentication method for the API call"
+    },
+    "api_auth_value": {
+      "type": "string",
+      "description": "Token, key, or base64-encoded credentials for auth"
+    },
+    "api_auth_header_name": {
+      "type": "string",
+      "description": "Custom header name when auth_type is API Key Header"
+    },
+    "api_request_body": {
+      "type": "string",
+      "description": "JSON request body template for POST requests"
+    },
+    "api_notes": {
+      "type": "string",
+      "description": "Notes or documentation about this API call for the data team"
+    }
+  },
+  "required": [
+    "client_id",
+    "job_name",
+    "object_type",
+    "frequency_type"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

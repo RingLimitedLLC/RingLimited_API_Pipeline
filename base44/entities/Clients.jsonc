@@ -1,0 +1,186 @@
+{
+  "name": "Clients",
+  "type": "object",
+  "properties": {
+    "client_name": {
+      "type": "string",
+      "description": "Name of the client"
+    },
+    "crm_type": {
+      "type": "string",
+      "enum": [
+        "HubSpot",
+        "Salesforce",
+        "GoHighLevel",
+        "WooCommerce",
+        "Other"
+      ],
+      "description": "Type of CRM system"
+    },
+    "api_base_url": {
+      "type": "string",
+      "description": "Base URL for the CRM API"
+    },
+    "auth_type": {
+      "type": "string",
+      "enum": [
+        "API Key",
+        "OAuth2",
+        "Webhook Only",
+        "WooCommerce",
+        "Client Post"
+      ],
+      "description": "Authentication method"
+    },
+    "api_key": {
+      "type": "string",
+      "description": "Encrypted API key"
+    },
+    "access_token": {
+      "type": "string",
+      "description": "Encrypted access token"
+    },
+    "refresh_token": {
+      "type": "string",
+      "description": "Encrypted refresh token"
+    },
+    "webhook_secret": {
+      "type": "string",
+      "description": "Encrypted webhook secret"
+    },
+    "woo_consumer_key": {
+      "type": "string",
+      "description": "WooCommerce Consumer Key"
+    },
+    "woo_consumer_secret": {
+      "type": "string",
+      "description": "WooCommerce Consumer Secret"
+    },
+    "woo_version": {
+      "type": "string",
+      "default": "wc/v3",
+      "description": "WooCommerce REST API version (e.g. wc/v3)"
+    },
+    "woo_user_agent": {
+      "type": "string",
+      "description": "User-Agent header value for WooCommerce API requests"
+    },
+    "connection_status": {
+      "type": "string",
+      "enum": [
+        "Not Connected",
+        "Connected",
+        "Error"
+      ],
+      "default": "Not Connected",
+      "description": "Current connection status"
+    },
+    "last_sync_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last synchronization timestamp"
+    },
+    "last_delivery_to_alteryx_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last time data was delivered to SharePoint"
+    },
+    "delivery_status": {
+      "type": "string",
+      "enum": [
+        "Healthy",
+        "Delayed",
+        "Failed"
+      ],
+      "description": "Current SharePoint delivery status"
+    },
+    "accounts_rep": {
+      "type": "string",
+      "description": "Accounts team member assigned to this client"
+    },
+    "adops_rep": {
+      "type": "string",
+      "description": "AdOps rep working on this client's campaign"
+    },
+    "dataops_rep": {
+      "type": "string",
+      "description": "DataOps rep working on this client's data pipeline"
+    },
+    "inbound_api_key": {
+      "type": "string",
+      "description": "API key for Target list inbound push endpoint"
+    },
+    "inbound_field_schema": {
+      "type": "string",
+      "description": "JSON array defining required fields for Target list inbound push"
+    },
+    "inbound_suppression_api_key": {
+      "type": "string",
+      "description": "API key for Suppression list inbound push endpoint"
+    },
+    "inbound_suppression_field_schema": {
+      "type": "string",
+      "description": "JSON array defining required fields for Suppression list inbound push"
+    },
+    "inbound_conversion_api_key": {
+      "type": "string",
+      "description": "API key for Conversion list inbound push endpoint"
+    },
+    "inbound_conversion_field_schema": {
+      "type": "string",
+      "description": "JSON array defining required fields for Conversion list inbound push"
+    }
+  },
+  "required": [
+    "client_name",
+    "crm_type"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.accounts_rep": "{{user.email}}"
+        },
+        {
+          "data.adops_rep": "{{user.email}}"
+        },
+        {
+          "data.dataops_rep": "{{user.email}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.accounts_rep": "{{user.email}}"
+        },
+        {
+          "data.adops_rep": "{{user.email}}"
+        },
+        {
+          "data.dataops_rep": "{{user.email}}"
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

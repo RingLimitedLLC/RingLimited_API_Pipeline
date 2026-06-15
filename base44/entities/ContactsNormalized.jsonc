@@ -1,0 +1,59 @@
+{
+  "name": "ContactsNormalized",
+  "type": "object",
+  "properties": {
+    "client_id": {
+      "type": "string",
+      "description": "Reference to the client"
+    },
+    "external_id": {
+      "type": "string",
+      "description": "ID from source CRM"
+    },
+    "first_name": {
+      "type": "string"
+    },
+    "last_name": {
+      "type": "string"
+    },
+    "email": {
+      "type": "string"
+    },
+    "phone": {
+      "type": "string"
+    },
+    "company": {
+      "type": "string"
+    },
+    "job_title": {
+      "type": "string"
+    },
+    "source_crm": {
+      "type": "string",
+      "enum": [
+        "HubSpot",
+        "Salesforce",
+        "GoHighLevel",
+        "Other"
+      ]
+    },
+    "last_synced_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "client_id",
+    "external_id"
+  ],
+  "rls": {
+    "create": false,
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": false,
+    "delete": false
+  }
+}

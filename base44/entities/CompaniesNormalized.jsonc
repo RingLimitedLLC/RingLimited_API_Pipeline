@@ -1,0 +1,59 @@
+{
+  "name": "CompaniesNormalized",
+  "type": "object",
+  "properties": {
+    "client_id": {
+      "type": "string",
+      "description": "Reference to the client"
+    },
+    "external_id": {
+      "type": "string",
+      "description": "ID from source CRM"
+    },
+    "company_name": {
+      "type": "string"
+    },
+    "domain": {
+      "type": "string"
+    },
+    "industry": {
+      "type": "string"
+    },
+    "employee_count": {
+      "type": "number"
+    },
+    "annual_revenue": {
+      "type": "number"
+    },
+    "country": {
+      "type": "string"
+    },
+    "source_crm": {
+      "type": "string",
+      "enum": [
+        "HubSpot",
+        "Salesforce",
+        "GoHighLevel",
+        "Other"
+      ]
+    },
+    "last_synced_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "client_id",
+    "external_id"
+  ],
+  "rls": {
+    "create": false,
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": false,
+    "delete": false
+  }
+}

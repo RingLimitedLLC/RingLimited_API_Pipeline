@@ -1,0 +1,67 @@
+{
+  "name": "Notifications",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "Reference to the user"
+    },
+    "alert_id": {
+      "type": "string",
+      "description": "Reference to the alert"
+    },
+    "channel": {
+      "type": "string",
+      "enum": [
+        "IN_APP",
+        "EMAIL"
+      ],
+      "description": "Notification channel"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "Queued",
+        "Sent",
+        "Failed",
+        "Read"
+      ],
+      "default": "Queued",
+      "description": "Notification status"
+    },
+    "sent_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the notification was sent"
+    },
+    "read_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the notification was read"
+    },
+    "error_message": {
+      "type": "string",
+      "description": "Error message if delivery failed"
+    }
+  },
+  "required": [
+    "user_id",
+    "alert_id",
+    "channel",
+    "status"
+  ],
+  "rls": {
+    "create": false,
+    "read": {
+      "data.user_id": "{{user.id}}"
+    },
+    "update": {
+      "data.user_id": "{{user.id}}"
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

@@ -1,0 +1,91 @@
+{
+  "name": "CampaignProducts",
+  "type": "object",
+  "properties": {
+    "campaign_id": {
+      "type": "string",
+      "description": "Reference to the parent Campaign"
+    },
+    "client_id": {
+      "type": "string",
+      "description": "Reference to the client (denormalized for easy querying)"
+    },
+    "product_name": {
+      "type": "string",
+      "description": "Name of the product / list (e.g. Lead Lift, Lead Renew)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "Active",
+        "Budget Met",
+        "Expired",
+        "Paused"
+      ],
+      "default": "Active",
+      "description": "Current acceptance status"
+    },
+    "total_lead_budget": {
+      "type": "number",
+      "description": "Maximum total leads to accept over the lifetime of the campaign"
+    },
+    "monthly_lead_budget": {
+      "type": "number",
+      "description": "Maximum leads to accept per calendar month"
+    },
+    "leads_received_total": {
+      "type": "number",
+      "default": 0,
+      "description": "Running total of leads received across all time"
+    },
+    "leads_received_this_month": {
+      "type": "number",
+      "default": 0,
+      "description": "Leads received in the current calendar month"
+    },
+    "leads_month_reset_at": {
+      "type": "string",
+      "format": "date",
+      "description": "The month (YYYY-MM-01) the monthly counter was last reset"
+    },
+    "inbound_api_key": {
+      "type": "string",
+      "description": "API key used to authenticate inbound pushes for this product"
+    },
+    "inbound_field_schema": {
+      "type": "string",
+      "description": "JSON array defining required fields for this product's inbound push"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional notes about this product"
+    }
+  },
+  "required": [
+    "campaign_id",
+    "client_id",
+    "product_name"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

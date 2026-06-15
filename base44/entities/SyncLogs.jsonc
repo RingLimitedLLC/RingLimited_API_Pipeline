@@ -1,0 +1,59 @@
+{
+  "name": "SyncLogs",
+  "type": "object",
+  "properties": {
+    "client_id": {
+      "type": "string",
+      "description": "Reference to the client"
+    },
+    "sync_type": {
+      "type": "string",
+      "enum": [
+        "Manual",
+        "Webhook",
+        "Scheduled"
+      ],
+      "description": "Type of sync operation"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "Success",
+        "Failed"
+      ],
+      "description": "Result of the sync"
+    },
+    "records_processed": {
+      "type": "number",
+      "description": "Number of records processed"
+    },
+    "error_message": {
+      "type": "string",
+      "description": "Error message if sync failed"
+    },
+    "alert_created": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether an alert was created for this log"
+    },
+    "alert_id": {
+      "type": "string",
+      "description": "Reference to the created alert"
+    }
+  },
+  "required": [
+    "client_id",
+    "sync_type",
+    "status"
+  ],
+  "rls": {
+    "create": false,
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": false,
+    "delete": false
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "name": "Campaigns",
+  "type": "object",
+  "properties": {
+    "client_id": {
+      "type": "string",
+      "description": "Reference to the client"
+    },
+    "campaign_name": {
+      "type": "string",
+      "description": "Name of the campaign"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "Active",
+        "Completed",
+        "Paused",
+        "Planned"
+      ],
+      "default": "Active",
+      "description": "Current status of the campaign"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional notes about the campaign"
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Campaign start date"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Campaign end date"
+    },
+    "inbound_conversion_api_key": {
+      "type": "string",
+      "description": "API key for the shared conversion inbound push endpoint for this campaign"
+    },
+    "inbound_conversion_field_schema": {
+      "type": "string",
+      "description": "JSON array defining required fields for the conversion inbound push"
+    }
+  },
+  "required": [
+    "client_id",
+    "campaign_name"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

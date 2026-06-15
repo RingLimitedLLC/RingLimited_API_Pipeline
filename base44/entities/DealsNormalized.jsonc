@@ -1,0 +1,68 @@
+{
+  "name": "DealsNormalized",
+  "type": "object",
+  "properties": {
+    "client_id": {
+      "type": "string",
+      "description": "Reference to the client"
+    },
+    "external_id": {
+      "type": "string",
+      "description": "ID from source CRM"
+    },
+    "deal_name": {
+      "type": "string"
+    },
+    "stage": {
+      "type": "string"
+    },
+    "amount": {
+      "type": "number"
+    },
+    "currency": {
+      "type": "string"
+    },
+    "close_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "owner_name": {
+      "type": "string"
+    },
+    "contact_id": {
+      "type": "string",
+      "description": "Reference to ContactsNormalized"
+    },
+    "company_id": {
+      "type": "string",
+      "description": "Reference to CompaniesNormalized"
+    },
+    "source_crm": {
+      "type": "string",
+      "enum": [
+        "HubSpot",
+        "Salesforce",
+        "GoHighLevel",
+        "Other"
+      ]
+    },
+    "last_synced_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "client_id",
+    "external_id"
+  ],
+  "rls": {
+    "create": false,
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": false,
+    "delete": false
+  }
+}

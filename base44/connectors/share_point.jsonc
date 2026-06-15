@@ -1,0 +1,9 @@
+{
+  "type": "share_point",
+  "scopes": [
+    "offline_access",
+    "User.Read",
+    "Files.ReadWrite.All",
+    "Sites.ReadWrite.All"
+  ]
+}
