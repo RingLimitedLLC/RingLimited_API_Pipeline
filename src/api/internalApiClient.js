@@ -70,20 +70,26 @@ const requestJson = async (path, { method = 'GET', body, params, headers = {} } 
   return data;
 };
 
+const unwrapEntityList = (response) => (Array.isArray(response) ? response : (response?.data ?? []));
+
 const createEntityAdapter = (entityName) => ({
   list: async (...args) => {
     const [sort = '-created_date', limit = 100] = args;
-    return requestJson(`/api/entities/${entityName}`, {
+    const response = await requestJson(`/api/entities/${entityName}`, {
       params: { sort, limit },
     });
+    return unwrapEntityList(response);
   },
-  filter: async (criteria = {}, sort = '-created_date', limit = 100) => requestJson(`/api/entities/${entityName}`, {
-    params: {
-      ...criteria,
-      sort,
-      limit,
-    },
-  }),
+  filter: async (criteria = {}, sort = '-created_date', limit = 100) => {
+    const response = await requestJson(`/api/entities/${entityName}`, {
+      params: {
+        ...criteria,
+        sort,
+        limit,
+      },
+    });
+    return unwrapEntityList(response);
+  },
   get: async (id) => requestJson(`/api/entities/${entityName}/${id}`),
   create: async (payload) => requestJson(`/api/entities/${entityName}`, {
     method: 'POST',
