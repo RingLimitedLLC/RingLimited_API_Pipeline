@@ -218,19 +218,21 @@ if (hasFrontendBuild) {
 }
 
 const start = async () => {
-  if (isCosmosConfigured()) {
-    try {
-      await initializeConnectionStore();
-      console.log(`Cosmos connection store ready: ${config.cosmosDatabaseName}.${config.cosmosConnectionsCollection}`);
-    } catch (error) {
-      console.error('Cosmos connection store initialization failed:', error);
-    }
-  } else {
-    console.warn('AZURE_COSMOS_CONNECTIONSTRING is not set; /webhooks/:clientName will return 503.');
-  }
-
   app.listen(config.port, () => {
     console.log(`Backend listening on http://localhost:${config.port}`);
+
+    if (!isCosmosConfigured()) {
+      console.warn('AZURE_COSMOS_CONNECTIONSTRING is not set; /webhooks/:clientName will return 503.');
+      return;
+    }
+
+    initializeConnectionStore()
+      .then(() => {
+        console.log(`Cosmos connection store ready: ${config.cosmosDatabaseName}.${config.cosmosConnectionsCollection}`);
+      })
+      .catch((error) => {
+        console.error('Cosmos connection store initialization failed:', error);
+      });
   });
 };
 
