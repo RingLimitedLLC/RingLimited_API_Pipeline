@@ -1,37 +1,26 @@
 import React, { useState } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import StepPlatform from "./StepPlatform";
 import StepClientInfo from "./StepClientInfo";
-import StepCredentials from "./StepCredentials";
 import StepSyncFrequency from "./StepSyncFrequency";
-import StepSharePoint from "./StepSharePoint";
 import StepReview from "./StepReview";
 
 const STEPS = [
-  { id: 1, label: "Client Info" },
-  { id: 2, label: "Credentials" },
-  { id: 3, label: "Sync Frequency" },
-  { id: 4, label: "SharePoint" },
-  { id: 5, label: "Review" },
+  { id: 1, label: "Platform" },
+  { id: 2, label: "Details" },
+  { id: 3, label: "Schedule" },
+  { id: 4, label: "Review" },
 ];
 
 const DEFAULT_FORM = {
-  // Step 1
+  connection_type: null,
   client_name: "",
-  crm_type: "HubSpot",
-  api_base_url: "",
-  initial_campaign: "",
-  // Step 2
-  auth_type: "API Key",
-  api_key: "",
-  access_token: "",
-  // Step 3
+  connection_type_fields: {},
   frequency_type: "daily",
   interval_value: 1,
   interval_unit: "hours",
   scheduled_time: "08:00",
-  // Step 4
-  campaign_name: "",
-  sharepoint_filename: "",
+  scheduled_day: "1",
 };
 
 export default function OnboardingWizard({ open, onOpenChange, onCreated }) {
@@ -54,7 +43,6 @@ export default function OnboardingWizard({ open, onOpenChange, onCreated }) {
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-2xl p-0 overflow-hidden">
-        {/* Progress bar */}
         <div className="flex border-b">
           {STEPS.map((s) => (
             <div
@@ -85,19 +73,35 @@ export default function OnboardingWizard({ open, onOpenChange, onCreated }) {
 
         <div className="p-6">
           {step === 1 && (
-            <StepClientInfo form={form} update={update} onNext={() => setStep(2)} onSkip={() => setStep(5)} onCancel={handleClose} />
+            <StepPlatform
+              form={form}
+              update={update}
+              onNext={() => setStep(2)}
+              onCancel={handleClose}
+            />
           )}
           {step === 2 && (
-            <StepCredentials form={form} update={update} onNext={() => setStep(3)} onBack={() => setStep(1)} />
+            <StepClientInfo
+              form={form}
+              update={update}
+              onNext={() => setStep(3)}
+              onBack={() => setStep(1)}
+            />
           )}
           {step === 3 && (
-            <StepSyncFrequency form={form} update={update} onNext={() => setStep(4)} onBack={() => setStep(2)} />
+            <StepSyncFrequency
+              form={form}
+              update={update}
+              onNext={() => setStep(4)}
+              onBack={() => setStep(2)}
+            />
           )}
           {step === 4 && (
-            <StepSharePoint form={form} update={update} onNext={() => setStep(5)} onBack={() => setStep(3)} />
-          )}
-          {step === 5 && (
-            <StepReview form={form} onBack={() => setStep(4)} onFinished={handleFinished} />
+            <StepReview
+              form={form}
+              onBack={() => setStep(3)}
+              onFinished={handleFinished}
+            />
           )}
         </div>
       </DialogContent>

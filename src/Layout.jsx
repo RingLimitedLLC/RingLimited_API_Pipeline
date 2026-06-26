@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { LayoutDashboard, Users, LogOut, Zap, Menu, ScrollText, Bell, ShieldAlert, Activity } from "lucide-react";
@@ -7,10 +7,18 @@ import { Button } from "@/components/ui/button";
 
 export default function Layout({ children, currentPageName }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const user = {
-    full_name: "Local Developer",
-    email: "dev@example.com",
-  };
+  const [user, setUser] = useState({ full_name: "", email: "" });
+
+  useEffect(() => {
+    fetch("/api/auth/me", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.name) {
+          setUser({ full_name: data.name, email: data.email || "" });
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const navItems = [
   { name: "Dashboard", page: "Dashboard", icon: LayoutDashboard },

@@ -91,14 +91,20 @@ const createEntityAdapter = (entityName) => ({
     return unwrapEntityList(response);
   },
   get: async (id) => requestJson(`/api/entities/${entityName}/${id}`),
-  create: async (payload) => requestJson(`/api/entities/${entityName}`, {
-    method: 'POST',
-    body: payload,
-  }),
-  update: async (id, payload) => requestJson(`/api/entities/${entityName}/${id}`, {
-    method: 'PATCH',
-    body: payload,
-  }),
+  create: async (payload) => {
+    const response = await requestJson(`/api/entities/${entityName}`, {
+      method: 'POST',
+      body: payload,
+    });
+    return response?.payload ?? response;
+  },
+  update: async (id, payload) => {
+    const response = await requestJson(`/api/entities/${entityName}/${id}`, {
+      method: 'PATCH',
+      body: payload,
+    });
+    return response?.payload ?? response;
+  },
   delete: async (id) => requestJson(`/api/entities/${entityName}/${id}`, {
     method: 'DELETE',
   }),
