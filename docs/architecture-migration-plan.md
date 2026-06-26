@@ -110,14 +110,14 @@ handoff/                          # Azure/Claude handoff reference only
 ### Option A - Static frontend + separate backend
 - Frontend: Vercel, Netlify, Azure Static Web Apps, or Azure App Service.
 - Backend: Azure Container Apps, Azure App Service, or a managed Kubernetes service.
-- DNS: point pipeline.ring.digital to the frontend host and add a subpath such as pipeline.ring.digital/api to the backend.
+- DNS: no longer the selected path; `pipeline.ring.digital` is bound directly to the Azure App Service monolith.
 
 ### Option B - Single container / monolith
 - Host both frontend and backend behind one reverse proxy.
 - Best for an initial internal deployment if you want to move faster.
 
 ### Recommended production setup
-- Current selected path: one Azure App Service hosts both the Express backend and the built Vite frontend at pipeline.ring.digital.
+- Current selected path: one Azure App Service hosts both the Express backend and the built Vite frontend at `pipeline.ring.digital`.
 - Keep using Easy Auth on the App Service for all management screens and `/api/*` routes.
 - Keep `/webhooks/*` excluded from Easy Auth and verify each inbound webhook with per-connection HMAC secrets from 1Password.
 

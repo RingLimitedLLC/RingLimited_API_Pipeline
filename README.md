@@ -23,13 +23,14 @@ npm run dev:all
 
 ## Deploy to Azure App Service
 
-The production hostname is:
+The production hostname is the canonical public URL:
 
 ```text
 https://pipeline.ring.digital/
 ```
 
-It points to the Azure App Service:
+It points to the Azure App Service below, which is useful as a diagnostic
+fallback but should not be used for customer-facing links:
 
 ```text
 https://ring-pipeline-application-f9g7cteff2cyb2c3.westus2-01.azurewebsites.net/

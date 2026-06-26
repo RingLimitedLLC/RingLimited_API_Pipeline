@@ -8,7 +8,7 @@ const useInternalApi = !useBase44;
 
 export const isUsingInternalApi = useInternalApi;
 
-// Keep Base44 compatibility by default, but allow the UI to run against your own backend.
+// Use the Azure backend by default; Base44 remains available only when explicitly enabled.
 export const base44 = useInternalApi
   ? createInternalApiAdapter()
   : createClient({
