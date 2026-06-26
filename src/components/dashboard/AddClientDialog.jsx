@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-const DEFAULT_CRM_TYPES = ["HubSpot", "Salesforce", "GoHighLevel", "Other"];
+const DEFAULT_CRM_TYPES = ["HubSpot", "Salesforce", "GoHighLevel", "WooCommerce", "Other"];
 
 export default function AddClientDialog({ open, onOpenChange, onCreated }) {
   const [form, setForm] = useState({
@@ -81,7 +81,7 @@ export default function AddClientDialog({ open, onOpenChange, onCreated }) {
             <Input value={form.client_name} onChange={e => setForm({...form, client_name: e.target.value})} placeholder="Acme Corp" />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs font-medium text-slate-500">CRM Type</Label>
+            <Label className="text-xs font-medium text-slate-500">Connection Type</Label>
             <Select value={form.crm_type} onValueChange={handleCrmChange}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>

@@ -3,9 +3,15 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite",
+    "dev:all": "node scripts/dev-launcher.mjs",
+    "postinstall": "npm --prefix server install --omit=dev",
     "build": "vite build",
+    "start": "npm --prefix server start",
     "lint": "eslint . --quiet",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -p ./jsconfig.json",

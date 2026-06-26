@@ -41,7 +41,7 @@ export default function StepClientInfo({ form, update, onNext, onSkip, onCancel 
       </div>
 
       <div className="space-y-1.5">
-        <Label className="text-xs font-medium text-slate-600">CRM Type <span className="text-slate-400 font-normal">(optional)</span></Label>
+        <Label className="text-xs font-medium text-slate-600">Connection Type <span className="text-slate-400 font-normal">(optional)</span></Label>
         <Select value={form.crm_type} onValueChange={(v) => update({ crm_type: v })}>
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>

@@ -1,16 +1,10 @@
-**Welcome to your Base44 project** 
+# Ring API Pipeline
 
-**About**
+Internal API connection management app for Ring. The current migration target is Azure App Service with Microsoft Entra Easy Auth, Cosmos DB Mongo API metadata storage, and 1Password Connect for client secrets.
 
-View and Edit  your app on [Base44.com](http://Base44.com) 
+## Local Development
 
-This project contains everything you need to run your app locally.
-
-**Edit the code in your local development environment**
-
-Any change pushed to the repo will also be reflected in the Base44 Builder.
-
-**Prerequisites:** 
+**Prerequisites:**
 
 1. Clone the repository using the project's Git URL 
 2. Navigate to the project directory
@@ -18,22 +12,42 @@ Any change pushed to the repo will also be reflected in the Base44 Builder.
 4. Create an `.env.local` file and set the right environment variables
 
 ```
-VITE_BASE44_APP_ID=your_app_id
-VITE_BASE44_APP_BASE_URL=your_backend_url
-
-e.g.
-VITE_BASE44_APP_ID=cbef744a8545c389ef439ea6
-VITE_BASE44_APP_BASE_URL=https://my-to-do-list-81bfaad7.base44.app
+VITE_INTERNAL_API_BASE_URL=http://localhost:3001
 ```
 
-Run the app: `npm run dev`
+Run the frontend and backend together:
 
-**Publish your changes**
+```bash
+npm run dev:all
+```
 
-Open [Base44.com](http://Base44.com) and click on Publish.
+## Deploy to Azure App Service
 
-**Docs & Support**
+The production hostname is:
 
-Documentation: [https://docs.base44.com/Integrations/Using-GitHub](https://docs.base44.com/Integrations/Using-GitHub)
+```text
+https://pipeline.ring.digital/
+```
 
-Support: [https://app.base44.com/support](https://app.base44.com/support)
+It points to the Azure App Service:
+
+```text
+https://ring-pipeline-application-f9g7cteff2cyb2c3.westus2-01.azurewebsites.net/
+```
+
+The App Service can run this repo as a single Node app:
+
+1. Push `main` to the GitHub repo connected to Azure Deployment Center.
+2. Azure should run the root install/build flow and then start the app with `npm start`.
+3. The root `npm start` launches the Express backend from `server/`, and Express serves the built Vite UI from `dist/`.
+4. Test the production hostname:
+
+```
+https://pipeline.ring.digital/
+```
+
+To test Microsoft Entra Easy Auth directly:
+
+```
+https://pipeline.ring.digital/.auth/login/aad?post_login_redirect_uri=/
+```

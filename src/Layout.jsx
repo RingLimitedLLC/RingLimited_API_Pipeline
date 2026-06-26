@@ -1,40 +1,16 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { base44 } from "@/api/base44Client";
 import { LayoutDashboard, Users, LogOut, Zap, Menu, ScrollText, Bell, ShieldAlert, Activity } from "lucide-react";
 import NotificationsBell from "@/components/notifications/NotificationsBell";
 import { Button } from "@/components/ui/button";
 
 export default function Layout({ children, currentPageName }) {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  useEffect(() => {
-    const checkAuth = async () => {
-      const isAuth = await base44.auth.isAuthenticated();
-      if (!isAuth) {
-        base44.auth.redirectToLogin();
-        return;
-      }
-      const me = await base44.auth.me();
-      setUser(me);
-      setLoading(false);
-    };
-    checkAuth();
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-slate-50">
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 border-2 border-slate-800 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-slate-500">Authenticating…</p>
-        </div>
-      </div>);
-
-  }
+  const user = {
+    full_name: "Local Developer",
+    email: "dev@example.com",
+  };
 
   const navItems = [
   { name: "Dashboard", page: "Dashboard", icon: LayoutDashboard },
@@ -109,7 +85,11 @@ export default function Layout({ children, currentPageName }) {
             </div>
             <NotificationsBell user={user} />
             <button
-              onClick={() => base44.auth.logout()}
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  window.location.assign('/');
+                }
+              }}
               className="text-slate-500 hover:text-white transition-colors">
 
               <LogOut className="h-4 w-4" />

@@ -26,45 +26,64 @@ export default function StepReview({ form, onBack, onFinished }) {
 
   const handleSave = async () => {
     setSaving(true);
-    const newClient = await base44.entities.Clients.create({
-      client_name: form.client_name,
-      crm_type: form.crm_type || undefined,
-      api_base_url: form.api_base_url || undefined,
-      auth_type: form.auth_type || undefined,
-      api_key: form.api_key || undefined,
-      access_token: form.access_token || undefined,
-      refresh_token: form.refresh_token || undefined,
-      connection_status: "Not Connected",
-    });
-
-    if (form.initial_campaign?.trim()) {
-      await base44.entities.Campaigns.create({
-        client_id: newClient.id,
-        campaign_name: form.initial_campaign.trim(),
-        status: "Active",
+    try {
+      const newClient = await base44.entities.Clients.create({
+        client_name: form.client_name,
+        crm_type: form.crm_type || undefined,
+        api_base_url: form.api_base_url || undefined,
+        auth_type: form.auth_type || undefined,
+        connection_status: "Not Connected",
       });
-    }
 
-    if (form.campaign_name?.trim() || form.sharepoint_filename?.trim()) {
-      await base44.entities.SyncJobs.create({
-        client_id: newClient.id,
-        job_name: `${form.client_name} - Initial Sync`,
-        object_type: "Contacts",
-        frequency_type: form.frequency_type,
-        interval_value: form.interval_value,
-        interval_unit: form.interval_unit,
-        scheduled_time: form.scheduled_time,
-        scheduled_day: form.scheduled_day,
-        campaign_name: form.campaign_name || form.initial_campaign,
-        sharepoint_filename: form.sharepoint_filename,
-        is_enabled: true,
-        last_run_status: "Never Run",
-      });
-    }
+      const credentialFields = {
+        api_base_url: form.api_base_url || undefined,
+        api_key: form.api_key || undefined,
+        access_token: form.access_token || undefined,
+        refresh_token: form.refresh_token || undefined,
+      };
+      const hasCredentialFields = Object.values(credentialFields).some(Boolean);
 
-    toast.success(`${form.client_name} has been set up successfully!`);
-    setSaving(false);
-    onFinished();
+      if (hasCredentialFields) {
+        await base44.functions.invoke("saveConnectionCredentials", {
+          client_id: newClient.id,
+          crm_type: form.crm_type || undefined,
+          auth_type: form.auth_type || undefined,
+          fields: credentialFields,
+        });
+      }
+
+      if (form.initial_campaign?.trim()) {
+        await base44.entities.Campaigns.create({
+          client_id: newClient.id,
+          campaign_name: form.initial_campaign.trim(),
+          status: "Active",
+        });
+      }
+
+      if (form.campaign_name?.trim() || form.sharepoint_filename?.trim()) {
+        await base44.entities.SyncJobs.create({
+          client_id: newClient.id,
+          job_name: `${form.client_name} - Initial Sync`,
+          object_type: "Contacts",
+          frequency_type: form.frequency_type,
+          interval_value: form.interval_value,
+          interval_unit: form.interval_unit,
+          scheduled_time: form.scheduled_time,
+          scheduled_day: form.scheduled_day,
+          campaign_name: form.campaign_name || form.initial_campaign,
+          sharepoint_filename: form.sharepoint_filename,
+          is_enabled: true,
+          last_run_status: "Never Run",
+        });
+      }
+
+      toast.success(`${form.client_name} has been set up successfully!`);
+      onFinished();
+    } catch (error) {
+      toast.error(`Setup failed: ${error.message}`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -85,7 +104,7 @@ export default function StepReview({ form, onBack, onFinished }) {
         </div>
         <div className="px-4">
           <Row label="Client Name" value={form.client_name} />
-          <Row label="CRM Type" value={form.crm_type} />
+          <Row label="Connection Type" value={form.crm_type} />
           <Row label="API Base URL" value={form.api_base_url} />
           <Row label="Initial Campaign" value={form.initial_campaign} />
         </div>
