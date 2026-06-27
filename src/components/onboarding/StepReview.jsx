@@ -31,6 +31,7 @@ export default function StepReview({ form, onBack, onFinished }) {
   const handleSave = async () => {
     setSaving(true);
     try {
+      // Step 1: create the client record — always
       const newClient = await base44.entities.Clients.create({
         client_name: form.client_name,
         connection_type: ct?.id,
@@ -46,21 +47,31 @@ export default function StepReview({ form, onBack, onFinished }) {
         sharepoint_folder_path: form.sharepoint_folder?.path || "",
       });
 
+      // Step 2: save credentials — non-blocking; warns if 1Password Connect is not yet reachable
       const hasFields = allFields.some(
         (f) => (form.connection_type_fields?.[f.key] || "").trim()
       );
       if (hasFields) {
-        await base44.functions.invoke("saveConnectionCredentials", {
-          client_id: newClient.id,
-          connection_type: ct?.id,
-          fields: form.connection_type_fields,
-        });
+        try {
+          await base44.functions.invoke("saveConnectionCredentials", {
+            client_id: newClient.id,
+            connection_type: ct?.id,
+            fields: form.connection_type_fields,
+          });
+          toast.success(`${form.client_name} added successfully!`);
+        } catch (credError) {
+          toast.warning(
+            `${form.client_name} created, but credentials could not be saved: ${credError.message}. ` +
+            `You can re-enter them from the client detail page once 1Password Connect is available.`
+          );
+        }
+      } else {
+        toast.success(`${form.client_name} added successfully!`);
       }
 
-      toast.success(`${form.client_name} added successfully!`);
       onFinished();
     } catch (error) {
-      toast.error(`Setup failed: ${error.message}`);
+      toast.error(`Failed to create client: ${error.message}`);
     } finally {
       setSaving(false);
     }
