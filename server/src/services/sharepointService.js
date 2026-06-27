@@ -168,6 +168,39 @@ export const readFileAsText = async (filePath) => {
   return res.text();
 };
 
+// Write text content to a file in SharePoint. Uses folder item ID when available
+// (more reliable than path) and falls back to path-based PUT.
+export const writeFileToFolder = async (folderItemId, folderPath, filename, content, contentType = 'text/csv') => {
+  const siteId = await getSiteId();
+  const token = await getAccessToken();
+
+  let url;
+  if (folderItemId) {
+    url = `https://graph.microsoft.com/v1.0/sites/${siteId}/drive/items/${folderItemId}:/${encodeURIComponent(filename)}:/content`;
+  } else {
+    const parts = [...(folderPath || '').split('/').filter(Boolean), filename];
+    const encodedPath = parts.map((p) => encodeURIComponent(p)).join('/');
+    url = `https://graph.microsoft.com/v1.0/sites/${siteId}/drive/root:/${encodedPath}:/content`;
+  }
+
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': contentType,
+    },
+    body: content,
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`SharePoint write failed (${res.status}): ${text.slice(0, 300)}`);
+  }
+
+  const data = await res.json();
+  return { id: data.id, name: data.name, webUrl: data.webUrl };
+};
+
 export const browseFolder = async (itemId = null) => {
   const siteId = await getSiteId();
 

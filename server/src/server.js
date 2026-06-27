@@ -36,6 +36,12 @@ import {
 import { getWorkspaceUsers } from './services/notionService.js';
 import { getClientsAndCampaignsFromSharePoint } from './services/clientCampaignCsvService.js';
 import { getCached, setCache } from './services/clientCampaignCache.js';
+import {
+  testWooCommerceConnection,
+  fetchWooCommerceObjects,
+  fetchWooCommerceSchema,
+} from './services/wooCommerceService.js';
+import { runSyncJob as executeSyncJob } from './services/syncExecutor.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -240,17 +246,31 @@ app.post('/api/functions/:functionName', async (req, res) => {
       const connection = await getEntityById('Connections', connectionId);
       if (!connection) return res.status(404).json({ message: 'Connection not found' });
       const credentials = await getConnectionCredentials(connection);
-      return res.json({
-        function: functionName,
-        success: credentials.configured,
-        status_code: credentials.configured ? 200 : 404,
-        source: credentials.source,
-        connection_type: credentials.connectionType?.id,
-        credential_field_status: credentials.fieldStatus || {},
-        message: credentials.configured ? 'Credential lookup succeeded.' : credentials.message || 'Credential lookup failed.',
-      });
+
+      if (!credentials.configured) {
+        return res.json({ function: functionName, success: false, source: credentials.source, connection_type: credentials.connectionType?.id, credential_field_status: credentials.fieldStatus || {}, message: credentials.message || 'Credential lookup failed.' });
+      }
+
+      // For WooCommerce: do a live API call to verify credentials work
+      if (credentials.connectionType?.id === 'woocommerce') {
+        try {
+          const wooResult = await testWooCommerceConnection({
+            ...credentials.fields,
+            woo_version: connection.woo_version || 'wc/v3',
+          });
+          await updateEntity('Connections', connectionId, { connection_status: 'Connected' });
+          return res.json({ function: functionName, success: true, source: credentials.source, connection_type: 'woocommerce', credential_field_status: credentials.fieldStatus || {}, ...wooResult });
+        } catch (err) {
+          await updateEntity('Connections', connectionId, { connection_status: 'Error' });
+          return res.json({ function: functionName, success: false, source: credentials.source, connection_type: 'woocommerce', credential_field_status: credentials.fieldStatus || {}, message: err.message });
+        }
+      }
+
+      // For other connection types: credential presence is sufficient
+      return res.json({ function: functionName, success: true, source: credentials.source, connection_type: credentials.connectionType?.id, credential_field_status: credentials.fieldStatus || {}, message: 'Credentials found in vault.' });
     }
 
+    // Legacy: client-level lookup
     const client = await getEntityById('Clients', clientId);
     if (!client) return res.status(404).json({ message: 'Client not found' });
     const credentials = await getClientCredentials(client);
@@ -263,6 +283,47 @@ app.post('/api/functions/:functionName', async (req, res) => {
       credential_field_status: credentials.fieldStatus || {},
       message: credentials.configured ? 'Credential lookup succeeded.' : credentials.message || 'Credential lookup failed.',
     });
+  }
+
+  if (functionName === 'fetchWooCommerceObjects') {
+    const connectionId = req.body?.connection_id || req.body?.client_id;
+    try {
+      const connection = await getEntityById('Connections', connectionId);
+      if (!connection) return res.status(404).json({ message: 'Connection not found' });
+      const credentials = await getConnectionCredentials(connection);
+      if (!credentials.configured) return res.status(400).json({ message: `Credentials not configured: ${credentials.message}` });
+      const objects = await fetchWooCommerceObjects({ ...credentials.fields, woo_version: connection.woo_version || 'wc/v3' });
+      return res.json({ objects });
+    } catch (err) {
+      return res.status(502).json({ message: err.message });
+    }
+  }
+
+  if (functionName === 'fetchWooCommerceSchema') {
+    const connectionId = req.body?.connection_id || req.body?.client_id;
+    const endpoint = req.body?.woo_page || req.body?.endpoint || 'orders';
+    try {
+      const connection = await getEntityById('Connections', connectionId);
+      if (!connection) return res.status(404).json({ message: 'Connection not found' });
+      const credentials = await getConnectionCredentials(connection);
+      if (!credentials.configured) return res.status(400).json({ message: `Credentials not configured: ${credentials.message}` });
+      const schema = await fetchWooCommerceSchema({ ...credentials.fields, woo_version: connection.woo_version || 'wc/v3' }, endpoint);
+      return res.json(schema);
+    } catch (err) {
+      return res.status(502).json({ message: err.message });
+    }
+  }
+
+  if (functionName === 'runSyncJob') {
+    const syncJobId = req.body?.sync_job_id;
+    const connectionId = req.body?.connection_id;
+    if (!syncJobId) return res.status(400).json({ message: 'sync_job_id is required' });
+    try {
+      const result = await executeSyncJob(syncJobId, connectionId);
+      return res.json(result);
+    } catch (err) {
+      return res.status(502).json({ message: err.message });
+    }
   }
 
   if (functionName === 'getNotionUsers') {
@@ -318,7 +379,28 @@ app.post('/api/functions/:functionName', async (req, res) => {
   }
 
   if (functionName === 'previewApiData') {
-    return res.json({ function: functionName, ok: true, preview: [] });
+    const connectionId = req.body?.connection_id || req.body?.client_id;
+    const endpoint = req.body?.woo_page || req.body?.endpoint || 'orders';
+    try {
+      const connection = connectionId ? await getEntityById('Connections', connectionId) : null;
+      if (!connection) return res.json({ ok: true, preview: [], message: 'No connection specified' });
+      const credentials = await getConnectionCredentials(connection);
+      if (!credentials.configured) return res.json({ ok: false, preview: [], message: credentials.message });
+      const connectionType = credentials.connectionType?.id || connection.connection_type;
+      let preview = [];
+      if (connectionType === 'woocommerce') {
+        const { fetchWooCommerceData: fetchWoo } = await import('./services/wooCommerceService.js');
+        const rows = await fetchWoo({ ...credentials.fields, woo_version: connection.woo_version || 'wc/v3' }, endpoint, { maxRecords: 5 });
+        preview = rows.slice(0, 5);
+      } else {
+        const { fetchGenericApiData } = await import('./services/genericApiService.js');
+        const rows = await fetchGenericApiData(credentials.fields, req.body);
+        preview = rows.slice(0, 5);
+      }
+      return res.json({ ok: true, preview });
+    } catch (err) {
+      return res.status(502).json({ ok: false, preview: [], message: err.message });
+    }
   }
 
   res.json({ function: functionName, ok: true, payload: req.body });

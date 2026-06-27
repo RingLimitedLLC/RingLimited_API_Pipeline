@@ -83,7 +83,7 @@ export default function SyncJobDialog({ open, onClose, onSaved, client, job }) {
   const [wooObjects, setWooObjects] = useState([]);
   const [fetchingObjects, setFetchingObjects] = useState(false);
 
-  const isWooClient = client?.crm_type === "WooCommerce";
+  const isWooClient = client?.connection_type === "woocommerce" || client?.crm_type === "WooCommerce";
 
   const handleFetchLiveFields = async () => {
     setFetchingSchema(true);
@@ -119,7 +119,7 @@ export default function SyncJobDialog({ open, onClose, onSaved, client, job }) {
       };
       setForm({
         ...DEFAULTS,
-        object_type: client?.crm_type === "WooCommerce" ? "Orders" : "Leads",
+        object_type: (client?.connection_type === "woocommerce" || client?.crm_type === "WooCommerce") ? "orders" : "Leads",
         api_endpoint: client?.api_base_url || "",
         api_auth_type: authTypeMap[client?.auth_type] || "Bearer Token",
         api_auth_value: client?.auth_type === "API Key" ? (client?.api_key || "") : (client?.access_token || ""),

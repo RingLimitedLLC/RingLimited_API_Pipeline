@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Database, Plus, Pencil, Trash2, ToggleLeft, ToggleRight, Play, AlertTriangle } from "lucide-react";
+import { Database, Plus, Pencil, Trash2, ToggleLeft, ToggleRight, Play, AlertTriangle, Loader2 } from "lucide-react";
 import moment from "moment";
 import SyncJobDialog from "@/components/client/SyncJobDialog";
 import CollapsibleCard from "@/components/ui/CollapsibleCard";
@@ -70,6 +70,7 @@ function isOverdue(job) {
 export default function SyncJobsManager({ client }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingJob, setEditingJob] = useState(null);
+  const [runningJobIds, setRunningJobIds] = useState(new Set());
   const queryClient = useQueryClient();
 
   const { data: jobs = [], isLoading } = useQuery({
@@ -108,9 +109,23 @@ export default function SyncJobsManager({ client }) {
   };
 
   const handleRunNow = async (job) => {
+    setRunningJobIds((prev) => new Set([...prev, job.id]));
     toast.info(`Running "${job.job_name}"…`);
-    await base44.entities.SyncJobs.update(job.id, { last_run_at: new Date().toISOString(), last_run_status: "Never Run" });
-    refetch();
+    try {
+      const res = await base44.functions.invoke("runSyncJob", {
+        sync_job_id: job.id,
+        connection_id: client.id,
+      });
+      const count = res.data?.records_processed ?? 0;
+      toast.success(`"${job.job_name}" complete — ${count} record${count !== 1 ? "s" : ""} written to SharePoint`);
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ["syncLogs"] });
+    } catch (err) {
+      toast.error(`"${job.job_name}" failed: ${err.message}`);
+      refetch();
+    } finally {
+      setRunningJobIds((prev) => { const next = new Set(prev); next.delete(job.id); return next; });
+    }
   };
 
   return (
@@ -155,8 +170,17 @@ export default function SyncJobsManager({ client }) {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 ml-3">
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleRunNow(job)} title="Run Now">
-                      <Play className="h-3.5 w-3.5 text-emerald-500" />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => handleRunNow(job)}
+                      title={runningJobIds.has(job.id) ? "Running…" : "Run Now"}
+                      disabled={runningJobIds.has(job.id)}
+                    >
+                      {runningJobIds.has(job.id)
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />
+                        : <Play className="h-3.5 w-3.5 text-emerald-500" />}
                     </Button>
                     <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleToggle(job)} title={job.is_enabled ? "Disable" : "Enable"}>
                       {job.is_enabled
