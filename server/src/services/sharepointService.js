@@ -69,6 +69,21 @@ const getSiteId = async () => {
   return cachedSiteId;
 };
 
+export const readFileAsText = async (filePath) => {
+  const siteId = await getSiteId();
+  const token = await getAccessToken();
+  const encodedPath = filePath.split('/').map((p) => encodeURIComponent(p)).join('/');
+  const res = await fetch(
+    `https://graph.microsoft.com/v1.0/sites/${siteId}/drive/root:/${encodedPath}:/content`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`SharePoint file read failed (${res.status}): ${text.slice(0, 300)}`);
+  }
+  return res.text();
+};
+
 export const browseFolder = async (itemId = null) => {
   const siteId = await getSiteId();
 

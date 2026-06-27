@@ -86,12 +86,10 @@ const queryAllPages = async (databaseId, filter) => {
   return pages;
 };
 
-// explicitDbId: passed by tableauService when it extracts it from the .tds XML;
-// falls back to config.notionClientDbId, then to a slow workspace search.
 export const getClientsAndCampaignsFromNotion = async (explicitDbId) => {
   if (!isNotionConfigured()) throw new Error('NOTION_INTEGRATION_TOKEN is not configured');
 
-  const dbId = explicitDbId || config.notionClientDbId;
+  const dbId = explicitDbId || null;
   if (dbId) {
     const schemaRes = await notionFetch(`/databases/${dbId}`);
     if (!schemaRes.ok) throw new Error(`Notion database schema fetch failed (${schemaRes.status})`);
@@ -102,7 +100,7 @@ export const getClientsAndCampaignsFromNotion = async (explicitDbId) => {
   // Slow path: search all databases accessible to the integration
   const searchRes = await notionFetch('/search', {
     method: 'POST',
-    body: JSON.stringify({ filter: { object: 'database' }, page_size: 50 }),
+    body: JSON.stringify({ filter: { property: 'object', value: 'database' }, page_size: 50 }),
   });
   if (!searchRes.ok) throw new Error(`Notion search failed (${searchRes.status})`);
   const searchData = await searchRes.json();

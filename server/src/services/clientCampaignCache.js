@@ -2,7 +2,7 @@ import { getEntityById, createEntity, updateEntity } from './cosmosEntityStore.j
 
 const CACHE_ENTITY = 'ClientCampaignIndex';
 const CACHE_ID = 'singleton';
-const CACHE_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours
+const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours — CSV refreshes at 1AM daily
 
 export const getCached = async () => {
   const doc = await getEntityById(CACHE_ENTITY, CACHE_ID).catch(() => null);

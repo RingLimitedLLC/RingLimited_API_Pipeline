@@ -33,7 +33,7 @@ import {
   browseFolder,
 } from './services/sharepointService.js';
 import { getWorkspaceUsers } from './services/notionService.js';
-import { getClientsAndCampaigns as getTableauClientsAndCampaigns } from './services/tableauService.js';
+import { getClientsAndCampaignsFromSharePoint } from './services/clientCampaignCsvService.js';
 import { getCached, setCache } from './services/clientCampaignCache.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -280,15 +280,15 @@ app.post('/api/functions/:functionName', async (req, res) => {
         return res.json({ clients: cached.clients, campaigns: cached.campaigns, cached: true });
       }
       if (cached && stale) {
-        // Return stale data immediately and refresh in background
+        // Return stale data immediately; refresh from SharePoint CSV in background
         res.json({ clients: cached.clients, campaigns: cached.campaigns, cached: true, stale: true });
-        getTableauClientsAndCampaigns()
+        getClientsAndCampaignsFromSharePoint()
           .then(({ clients, campaigns }) => setCache(clients, campaigns))
           .catch((err) => console.error('[Cache] Background refresh failed:', err.message));
         return;
       }
-      // No cache — fetch synchronously and store
-      const { clients, campaigns } = await getTableauClientsAndCampaigns();
+      // No cache — fetch from SharePoint synchronously, then store
+      const { clients, campaigns } = await getClientsAndCampaignsFromSharePoint();
       setCache(clients, campaigns).catch(() => {});
       return res.json({ clients, campaigns, cached: false });
     } catch (error) {
@@ -297,8 +297,9 @@ app.post('/api/functions/:functionName', async (req, res) => {
   }
 
   if (functionName === 'refreshClientCampaignCache') {
+    // Force-reads the SharePoint CSV and updates the Cosmos cache regardless of TTL.
     try {
-      const { clients, campaigns } = await getTableauClientsAndCampaigns();
+      const { clients, campaigns } = await getClientsAndCampaignsFromSharePoint();
       await setCache(clients, campaigns);
       return res.json({ ok: true, clients: clients.length, campaigns: Object.keys(campaigns).length });
     } catch (error) {

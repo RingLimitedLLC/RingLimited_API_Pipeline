@@ -33,11 +33,4 @@ export const config = {
   sharepointClientSecret: process.env.SHAREPOINT_CLIENT_SECRET || '',
   sharepointSiteUrl: process.env.SHAREPOINT_SITE_URL || '',
   notionIntegrationToken: process.env.NOTION_INTEGRATION_TOKEN || '',
-  notionClientDbId: process.env.NOTION_CLIENT_DB_ID || '',
-  tableauServerUrl: process.env.TABLEAU_SERVER_URL || '',
-  tableauSiteName: process.env.TABLEAU_SITE_NAME || '',
-  tableauPatName: process.env.TABLEAU_PAT_NAME || '',
-  tableauPatSecret: process.env.TABLEAU_PAT_SECRET || '',
-  tableauDatasourceName: process.env.TABLEAU_DATASOURCE_NAME || 'Notion_Client_Campaign_Active_Index',
-  tableauProjectName: process.env.TABLEAU_PROJECT_NAME || 'Data Operations',
 };
