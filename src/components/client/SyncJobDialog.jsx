@@ -134,7 +134,7 @@ export default function SyncJobDialog({ open, onClose, onSaved, client, job }) {
     setWooObjects([]);
 
     // For WooCommerce clients, dynamically discover accessible objects
-    if (client?.crm_type === "WooCommerce") {
+    if (isWooClient) {
       setFetchingObjects(true);
       base44.functions.invoke("fetchWooCommerceObjects", { client_id: client.id })
         .then(res => {
@@ -308,7 +308,7 @@ export default function SyncJobDialog({ open, onClose, onSaved, client, job }) {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-xs font-medium text-slate-500">Fields to Pull</Label>
-              {isWooClient && (
+              {isWooClient && form.object_type && form.object_type !== "Custom" && (
                 <div className="flex items-center gap-1.5">
                   <Button
                     type="button"

@@ -22,10 +22,18 @@ export default function FieldSelectPreview({ open, onClose, onConfirm, client, o
   const [activeRow, setActiveRow] = useState(null);
 
   const fetchData = async () => {
+    const wooPage = (!objectType || objectType === "Custom")
+      ? null
+      : objectType === "Orders" ? "orders" : objectType.toLowerCase();
+
+    if (!wooPage) {
+      setError('Select a specific CRM object type before browsing live data.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
-      const wooPage = objectType === "Orders" ? "orders" : objectType.toLowerCase();
       const res = await base44.functions.invoke("fetchWooCommerceSchema", {
         client_id: client.id,
         woo_page: wooPage,
