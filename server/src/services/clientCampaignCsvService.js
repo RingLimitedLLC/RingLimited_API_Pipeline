@@ -1,6 +1,6 @@
-import { isSharePointConfigured, readFileAsText } from './sharepointService.js';
+import { isSharePointConfigured, readFileByName } from './sharepointService.js';
 
-const INDEX_PATH = 'Documents/Ring Data Ops/DatabaseServices/Notion_Client_Campaign_Active_Index.csv';
+const INDEX_FILENAME = 'Notion_Client_Campaign_Active_Index';
 
 // Parses a single CSV line, handling quoted fields (including commas inside quotes).
 const parseCsvLine = (line) => {
@@ -82,9 +82,9 @@ export const getClientsAndCampaignsFromSharePoint = async () => {
   if (!isSharePointConfigured()) {
     throw new Error('SharePoint is not configured (missing tenant ID, client ID, secret, or site URL).');
   }
-  const csvText = await readFileAsText(INDEX_PATH);
+  const csvText = await readFileByName(INDEX_FILENAME);
   const rows = parseCsv(csvText);
   return buildClientCampaignData(rows);
 };
 
-export { INDEX_PATH };
+export { INDEX_FILENAME };

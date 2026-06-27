@@ -111,6 +111,48 @@ export const debugSharePointPath = async (searchFileName) => {
   return { siteId, drives, searchResults, rootItems };
 };
 
+// Search for a file by name across all drives on the site, then return its text content.
+// More robust than path-based access — works regardless of folder structure.
+export const readFileByName = async (fileName) => {
+  const siteId = await getSiteId();
+  const token = await getAccessToken();
+
+  // Search across all drives on the site
+  const drives = await graphGet(`/sites/${siteId}/drives?$select=id,name`);
+  const driveList = drives.value || [];
+
+  for (const drive of driveList) {
+    try {
+      const q = encodeURIComponent(fileName);
+      const searchData = await graphGet(
+        `/sites/${siteId}/drives/${drive.id}/root/search(q='${q}')?$select=id,name,webUrl&$top=10`,
+      );
+      const match = (searchData.value || []).find(
+        (item) => item.name.toLowerCase().startsWith(fileName.toLowerCase()),
+      );
+      if (match) {
+        const res = await fetch(
+          `https://graph.microsoft.com/v1.0/sites/${siteId}/drives/${drive.id}/items/${match.id}/content`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`File download failed (${res.status}): ${text.slice(0, 200)}`);
+        }
+        return res.text();
+      }
+    } catch (err) {
+      // If one drive fails, try the next
+      console.warn(`[SharePoint] Drive "${drive.name}" search failed:`, err.message);
+    }
+  }
+
+  throw new Error(
+    `File "${fileName}" not found in any drive on the SharePoint site. ` +
+    `Check that the file exists and the app registration has Sites.Read.All or Files.Read.All permission.`,
+  );
+};
+
 export const readFileAsText = async (filePath) => {
   const siteId = await getSiteId();
   const token = await getAccessToken();
