@@ -22,7 +22,7 @@ import {
   createEntity,
   updateEntity,
   deleteEntity,
-} from './services/csvStore.js';
+} from './services/entityStore.js';
 import {
   isSharePointConfigured,
   browseFolder,
@@ -54,7 +54,7 @@ if (!hasFrontendBuild) {
 app.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
-    mode: 'local-csv',
+    mode: isCosmosConfigured() ? 'cosmos' : 'local-csv',
     frontend: hasFrontendBuild ? 'built' : 'not-built',
   });
 });
@@ -108,7 +108,7 @@ app.get('/api/entities/:entityName', async (req, res) => {
       entity: entityName,
       data,
       meta: {
-        source: 'local-csv',
+        source: isCosmosConfigured() ? 'cosmos' : 'local-csv',
         user: getCurrentUser(req)?.email || 'unknown',
       },
     });
@@ -240,10 +240,11 @@ if (hasFrontendBuild) {
 
 const start = async () => {
   app.listen(config.port, () => {
-    console.log(`Backend listening on http://localhost:${config.port}`);
+    const storeMode = isCosmosConfigured() ? 'cosmos' : 'local-csv';
+    console.log(`Backend listening on http://localhost:${config.port} [entity-store=${storeMode}]`);
 
     if (!isCosmosConfigured()) {
-      console.warn('AZURE_COSMOS_CONNECTIONSTRING is not set; /webhooks/:clientName will return 503.');
+      console.warn('AZURE_COSMOS_CONNECTIONSTRING is not set; entity storage falls back to local CSV and /webhooks/:clientName will return 503.');
       return;
     }
 
