@@ -4,9 +4,24 @@ import { getCosmosDb } from './cosmosConnectionStore.js';
 const normalizeEntityName = (entityName) =>
   `entities_${entityName.replace(/[^a-z0-9_-]+/gi, '_').toLowerCase()}`;
 
+// Cosmos MongoDB API requires indexes to sort; create them on first access.
+const initializedCollections = new Set();
+
 const getCollection = async (entityName) => {
+  const name = normalizeEntityName(entityName);
   const db = await getCosmosDb();
-  return db.collection(normalizeEntityName(entityName));
+  const collection = db.collection(name);
+  if (!initializedCollections.has(name)) {
+    try {
+      await collection.createIndex({ created_date: -1 }, { name: 'idx_created_date' });
+      await collection.createIndex({ updated_date: -1 }, { name: 'idx_updated_date' });
+      await collection.createIndex({ id: 1 }, { name: 'idx_id', unique: true });
+    } catch {
+      // Indexes likely already exist; not fatal
+    }
+    initializedCollections.add(name);
+  }
+  return collection;
 };
 
 const strip = ({ _id, ...rest }) => rest;

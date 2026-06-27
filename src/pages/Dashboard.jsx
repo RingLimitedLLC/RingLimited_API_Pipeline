@@ -10,9 +10,10 @@ import OnboardingWizard from "@/components/onboarding/OnboardingWizard";
 export default function Dashboard() {
   const [showAdd, setShowAdd] = useState(false);
 
-  const { data: clients = [], isLoading, refetch } = useQuery({
+  const { data: clients = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ["clients"],
-    queryFn: () => base44.entities.Clients.list("-created_date")
+    queryFn: () => base44.entities.Clients.list("-created_date"),
+    retry: 1,
   });
 
   const connected = clients.filter((c) => c.connection_status === "Connected").length;
@@ -40,6 +41,11 @@ export default function Dashboard() {
       </div>
 
       <StatsCards stats={stats} />
+      {isError && (
+        <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+          Failed to load clients: {error?.message || "Unknown error"}
+        </div>
+      )}
       <ClientsTable clients={clients} isLoading={isLoading} />
       <OnboardingWizard open={showAdd} onOpenChange={setShowAdd} onCreated={refetch} />
     </div>);
