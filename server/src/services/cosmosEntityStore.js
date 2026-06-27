@@ -4,7 +4,9 @@ import { getCosmosDb } from './cosmosConnectionStore.js';
 const normalizeEntityName = (entityName) =>
   `entities_${entityName.replace(/[^a-z0-9_-]+/gi, '_').toLowerCase()}`;
 
-// Cosmos MongoDB API requires indexes to sort; create them on first access.
+// Index creation is fire-and-forget: Cosmos builds indexes asynchronously so we
+// cannot rely on them being ready immediately after createIndex returns. All
+// sorting is done in JS to avoid ORDER BY failures on freshly created collections.
 const initializedCollections = new Set();
 
 const getCollection = async (entityName) => {
@@ -12,14 +14,11 @@ const getCollection = async (entityName) => {
   const db = await getCosmosDb();
   const collection = db.collection(name);
   if (!initializedCollections.has(name)) {
-    try {
-      await collection.createIndex({ created_date: -1 }, { name: 'idx_created_date' });
-      await collection.createIndex({ updated_date: -1 }, { name: 'idx_updated_date' });
-      await collection.createIndex({ id: 1 }, { name: 'idx_id', unique: true });
-    } catch {
-      // Indexes likely already exist; not fatal
-    }
     initializedCollections.add(name);
+    // Fire-and-forget: these improve future query performance once Cosmos builds them.
+    collection.createIndex({ created_date: -1 }, { name: 'idx_created_date' }).catch(() => {});
+    collection.createIndex({ updated_date: -1 }, { name: 'idx_updated_date' }).catch(() => {});
+    collection.createIndex({ id: 1 }, { name: 'idx_id', unique: true }).catch(() => {});
   }
   return collection;
 };
@@ -35,14 +34,25 @@ const parseSort = (value) => {
 export const listEntities = async (entityName, { filters = {}, sort, limit } = {}) => {
   const collection = await getCollection(entityName);
   const parsedSort = parseSort(sort);
-  const mongoSort = parsedSort ? { [parsedSort.field]: parsedSort.descending ? -1 : 1 } : {};
   const mongoLimit = Number.isFinite(Number(limit)) ? Number(limit) : 100;
+
+  // Fetch without a DB-level sort: Cosmos requires Range indexes for ORDER BY and
+  // those may not be ready immediately. We sort in JS instead.
   const docs = await collection
     .find(Object.keys(filters).length ? filters : {})
-    .sort(mongoSort)
-    .limit(mongoLimit)
+    .limit(1000)
     .toArray();
-  return docs.map(strip);
+
+  if (parsedSort) {
+    docs.sort((a, b) => {
+      const av = a[parsedSort.field] ?? '';
+      const bv = b[parsedSort.field] ?? '';
+      const cmp = String(av).localeCompare(String(bv), undefined, { sensitivity: 'base' });
+      return parsedSort.descending ? -cmp : cmp;
+    });
+  }
+
+  return docs.slice(0, mongoLimit).map(strip);
 };
 
 export const getEntityById = async (entityName, id) => {
