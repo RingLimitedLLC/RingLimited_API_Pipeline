@@ -28,6 +28,7 @@ import {
   isSharePointConfigured,
   browseFolder,
 } from './services/sharepointService.js';
+import { getWorkspaceUsers } from './services/notionService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -224,6 +225,15 @@ app.post('/api/functions/:functionName', async (req, res) => {
         ? 'Credential lookup succeeded.'
         : credentials.message || 'Credential lookup failed.',
     });
+  }
+
+  if (functionName === 'getNotionUsers') {
+    try {
+      const users = await getWorkspaceUsers();
+      return res.json({ users });
+    } catch (error) {
+      return res.status(502).json({ message: error.message });
+    }
   }
 
   if (functionName === 'previewApiData') {
