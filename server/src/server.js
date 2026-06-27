@@ -15,6 +15,7 @@ import {
   buildClientCredentialMetadata,
   getClientCredentials,
   saveClientCredentials,
+  deleteClientCredentials,
 } from './services/onePasswordService.js';
 import {
   listEntities,
@@ -152,6 +153,14 @@ app.delete('/api/entities/:entityName/:id', async (req, res) => {
   const { entityName, id } = req.params;
 
   try {
+    // For client deletions, clean up credentials before removing the record
+    if (entityName === 'Clients') {
+      const client = await getEntityById('Clients', id);
+      if (client) {
+        await deleteClientCredentials(client).catch(() => {});
+      }
+    }
+
     const deleted = await deleteEntity(entityName, id);
     res.json({ entity: entityName, id, deleted: deleted.deleted });
   } catch (error) {

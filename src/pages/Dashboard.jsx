@@ -46,7 +46,7 @@ export default function Dashboard() {
           Failed to load clients: {error?.message || "Unknown error"}
         </div>
       )}
-      <ClientsTable clients={clients} isLoading={isLoading} />
+      <ClientsTable clients={clients} isLoading={isLoading} onDeleted={refetch} />
       <OnboardingWizard open={showAdd} onOpenChange={setShowAdd} onCreated={refetch} />
     </div>);
 

@@ -1,6 +1,11 @@
 import { config } from '../config.js';
 import { getLocalCredentialItem, saveLocalCredentialItem } from './localCredentialStore.js';
 import {
+  isCosmosCredentialStoreAvailable,
+  saveCosmosCredential,
+  getCosmosCredential,
+} from './cosmosCredentialStore.js';
+import {
   buildCredentialFieldStatus,
   getAllSecretFieldKeys,
   normalizeConnectionFields,
@@ -313,43 +318,54 @@ export const getClientCredentials = async (client) => {
     };
   }
 
+  // Try 1Password first, then fall back to Cosmos credential store
   try {
     const item = await fetchExistingItem(itemId, vaultId);
-    if (!item) {
+    if (item) {
+      const fields = extractItemFields(connectionType, item);
       return {
-        configured: false,
-        message: 'No credential item has been saved for this client yet.',
-        clientId,
-        itemId,
+        configured: true,
+        source: isOnePasswordConnectConfigured() ? 'onepassword-connect' : 'local-json',
+        itemId: item.id || itemId,
         connectionType,
+        item: {
+          id: item.id || itemId,
+          title: item.title || clientId,
+          category: item.category || 'API_CREDENTIAL',
+          vault: item.vault || null,
+        },
+        fields,
+        fieldStatus: buildCredentialFieldStatus(connectionType, fields),
       };
     }
-
-    const fields = extractItemFields(connectionType, item);
-
-    return {
-      configured: true,
-      source: isOnePasswordConnectConfigured() ? 'onepassword-connect' : 'local-json',
-      itemId: item.id || itemId,
-      connectionType,
-      item: {
-        id: item.id || itemId,
-        title: item.title || clientId,
-        category: item.category || 'API_CREDENTIAL',
-        vault: item.vault || null,
-      },
-      fields,
-      fieldStatus: buildCredentialFieldStatus(connectionType, fields),
-    };
-  } catch (error) {
-    return {
-      configured: false,
-      message: error.message,
-      clientId,
-      itemId,
-      connectionType,
-    };
+  } catch {
+    // fall through to Cosmos check
   }
+
+  // Check Cosmos credential store (used when 1Password Connect is unreachable)
+  if (isCosmosCredentialStoreAvailable()) {
+    const cosmosItem = await getCosmosCredential(clientId).catch(() => null);
+    if (cosmosItem) {
+      const fields = normalizeConnectionFields(connectionType, cosmosItem.fields || {});
+      return {
+        configured: true,
+        source: 'cosmos-fallback',
+        itemId: clientId,
+        connectionType,
+        item: { id: clientId, title: `${clientId} (Cosmos)`, category: 'API_CREDENTIAL', vault: null },
+        fields,
+        fieldStatus: buildCredentialFieldStatus(connectionType, fields),
+      };
+    }
+  }
+
+  return {
+    configured: false,
+    message: 'No credentials have been saved for this client yet.',
+    clientId,
+    itemId,
+    connectionType,
+  };
 };
 
 export const saveClientCredentials = async (client, payload = {}) => {
@@ -364,34 +380,50 @@ export const saveClientCredentials = async (client, payload = {}) => {
   });
   const itemId = getCredentialItemId(client);
   const vaultId = getCredentialVaultId(client);
-  const existingItem = await fetchExistingItem(itemId, vaultId);
+  const existingItem = await fetchExistingItem(itemId, vaultId).catch(() => null);
   const existingFields = existingItem ? extractItemFields(connectionType, existingItem) : {};
 
   requireConnectionFields({ connectionType, submittedFields, existingFields });
 
-  const savedItem = await saveItem({
-    client,
-    connectionType,
-    submittedFields,
-    existingItem,
-    itemId,
-    vaultId,
-  });
-  const savedFields = {
-    ...existingFields,
-    ...submittedFields,
-  };
-  const fieldStatus = buildCredentialFieldStatus(connectionType, savedFields);
-
-  return {
-    success: true,
-    source: isOnePasswordConnectConfigured() ? 'onepassword-connect' : 'local-json',
-    connectionType,
-    itemId: savedItem.id || itemId || client.id,
-    vaultId: savedItem.vault?.id || vaultId || 'local-development',
-    fields: savedFields,
-    fieldStatus,
-  };
+  try {
+    const savedItem = await saveItem({
+      client,
+      connectionType,
+      submittedFields,
+      existingItem,
+      itemId,
+      vaultId,
+    });
+    const savedFields = { ...existingFields, ...submittedFields };
+    return {
+      success: true,
+      source: isOnePasswordConnectConfigured() ? 'onepassword-connect' : 'local-json',
+      connectionType,
+      itemId: savedItem.id || itemId || client.id,
+      vaultId: savedItem.vault?.id || vaultId || 'local-development',
+      fields: savedFields,
+      fieldStatus: buildCredentialFieldStatus(connectionType, savedFields),
+    };
+  } catch (opError) {
+    // 1Password Connect unreachable — fall back to Cosmos credential store
+    if (!isCosmosCredentialStoreAvailable()) {
+      throw opError;
+    }
+    const savedFields = { ...existingFields, ...submittedFields };
+    await saveCosmosCredential(client.id, {
+      connectionType: connectionType.id,
+      fields: savedFields,
+    });
+    return {
+      success: true,
+      source: 'cosmos-fallback',
+      connectionType,
+      itemId: client.id,
+      vaultId: 'cosmos-fallback',
+      fields: savedFields,
+      fieldStatus: buildCredentialFieldStatus(connectionType, savedFields),
+    };
+  }
 };
 
 export const buildClientCredentialMetadata = ({ client, payload = {}, saveResult }) => {
@@ -434,6 +466,34 @@ export const buildClientCredentialMetadata = ({ client, payload = {}, saveResult
   }
 
   return metadata;
+};
+
+export const deleteClientCredentials = async (client) => {
+  const clientId = typeof client === 'string' ? client : client?.id;
+  const itemId = getCredentialItemId(typeof client === 'string' ? {} : client);
+  const vaultId = getCredentialVaultId(typeof client === 'string' ? {} : client);
+
+  const results = { onepassword: null, cosmos: null };
+
+  if (itemId && isOnePasswordConnectConfigured()) {
+    try {
+      await onePasswordRequest(
+        `/v1/vaults/${encodeURIComponent(vaultId)}/items/${encodeURIComponent(itemId)}`,
+        { method: 'DELETE' },
+      );
+      results.onepassword = 'deleted';
+    } catch {
+      results.onepassword = 'skipped';
+    }
+  }
+
+  if (isCosmosCredentialStoreAvailable()) {
+    const { deleteCosmosCredential } = await import('./cosmosCredentialStore.js');
+    await deleteCosmosCredential(clientId).catch(() => {});
+    results.cosmos = 'deleted';
+  }
+
+  return results;
 };
 
 export const getCredentialStatusForClient = (client = {}) => {
