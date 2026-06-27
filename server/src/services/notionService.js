@@ -86,41 +86,41 @@ const queryAllPages = async (databaseId, filter) => {
   return pages;
 };
 
-export const getClientsAndCampaignsFromNotion = async () => {
+// explicitDbId: passed by tableauService when it extracts it from the .tds XML;
+// falls back to config.notionClientDbId, then to a slow workspace search.
+export const getClientsAndCampaignsFromNotion = async (explicitDbId) => {
   if (!isNotionConfigured()) throw new Error('NOTION_INTEGRATION_TOKEN is not configured');
 
-  // Find the client/campaign database
-  const dbId = config.notionClientDbId;
-  if (!dbId) {
-    // Search for it by looking for databases accessible to the integration
-    const searchRes = await notionFetch('/search', {
-      method: 'POST',
-      body: JSON.stringify({ filter: { object: 'database' }, page_size: 50 }),
-    });
-    if (!searchRes.ok) throw new Error(`Notion search failed (${searchRes.status})`);
-    const searchData = await searchRes.json();
-    const databases = searchData.results ?? [];
-
-    const match = databases.find((db) => {
-      const props = Object.keys(db.properties || {}).map((p) => p.toLowerCase());
-      return props.some((p) => p.includes('client')) && props.some((p) => p.includes('campaign'));
-    });
-
-    if (!match) {
-      throw new Error(
-        'Could not auto-detect the Client/Campaign Notion database. ' +
-        'Set NOTION_CLIENT_DB_ID in app settings to the Notion database ID.',
-      );
-    }
-
-    return parseNotionClientCampaignDb(match.id, match.properties);
+  const dbId = explicitDbId || config.notionClientDbId;
+  if (dbId) {
+    const schemaRes = await notionFetch(`/databases/${dbId}`);
+    if (!schemaRes.ok) throw new Error(`Notion database schema fetch failed (${schemaRes.status})`);
+    const schema = await schemaRes.json();
+    return parseNotionClientCampaignDb(dbId, schema.properties);
   }
 
-  // Fetch schema first to resolve property names
-  const schemaRes = await notionFetch(`/databases/${dbId}`);
-  if (!schemaRes.ok) throw new Error(`Notion database schema fetch failed (${schemaRes.status})`);
-  const schema = await schemaRes.json();
-  return parseNotionClientCampaignDb(dbId, schema.properties);
+  // Slow path: search all databases accessible to the integration
+  const searchRes = await notionFetch('/search', {
+    method: 'POST',
+    body: JSON.stringify({ filter: { object: 'database' }, page_size: 50 }),
+  });
+  if (!searchRes.ok) throw new Error(`Notion search failed (${searchRes.status})`);
+  const searchData = await searchRes.json();
+  const databases = searchData.results ?? [];
+
+  const match = databases.find((db) => {
+    const props = Object.keys(db.properties || {}).map((p) => p.toLowerCase());
+    return props.some((p) => p.includes('client')) && props.some((p) => p.includes('campaign'));
+  });
+
+  if (!match) {
+    throw new Error(
+      'Could not auto-detect the Client/Campaign Notion database. ' +
+      'Set NOTION_CLIENT_DB_ID in app settings to the Notion database ID.',
+    );
+  }
+
+  return parseNotionClientCampaignDb(match.id, match.properties);
 };
 
 const parseNotionClientCampaignDb = async (databaseId, properties) => {

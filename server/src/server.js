@@ -34,6 +34,7 @@ import {
 } from './services/sharepointService.js';
 import { getWorkspaceUsers } from './services/notionService.js';
 import { getClientsAndCampaigns as getTableauClientsAndCampaigns } from './services/tableauService.js';
+import { getCached, setCache } from './services/clientCampaignCache.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -274,8 +275,32 @@ app.post('/api/functions/:functionName', async (req, res) => {
 
   if (functionName === 'getClientsAndCampaigns') {
     try {
-      const data = await getTableauClientsAndCampaigns();
-      return res.json(data);
+      const { data: cached, stale } = await getCached();
+      if (cached && !stale) {
+        return res.json({ clients: cached.clients, campaigns: cached.campaigns, cached: true });
+      }
+      if (cached && stale) {
+        // Return stale data immediately and refresh in background
+        res.json({ clients: cached.clients, campaigns: cached.campaigns, cached: true, stale: true });
+        getTableauClientsAndCampaigns()
+          .then(({ clients, campaigns }) => setCache(clients, campaigns))
+          .catch((err) => console.error('[Cache] Background refresh failed:', err.message));
+        return;
+      }
+      // No cache — fetch synchronously and store
+      const { clients, campaigns } = await getTableauClientsAndCampaigns();
+      setCache(clients, campaigns).catch(() => {});
+      return res.json({ clients, campaigns, cached: false });
+    } catch (error) {
+      return res.status(502).json({ message: error.message });
+    }
+  }
+
+  if (functionName === 'refreshClientCampaignCache') {
+    try {
+      const { clients, campaigns } = await getTableauClientsAndCampaigns();
+      await setCache(clients, campaigns);
+      return res.json({ ok: true, clients: clients.length, campaigns: Object.keys(campaigns).length });
     } catch (error) {
       return res.status(502).json({ message: error.message });
     }

@@ -1,3 +1,4 @@
+import { inflateRawSync } from 'node:zlib';
 import { config } from '../config.js';
 
 const TABLEAU_REST_VERSION = '3.22';
@@ -57,63 +58,95 @@ const findDatasourceLuid = async (token, siteId) => {
   return match.id;
 };
 
-const queryDatasource = async (token, siteId, datasourceLuid) => {
-  const url = `${config.tableauServerUrl}/api/v1/sites/${siteId}/vizql-data-service/query-data-source`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'X-Tableau-Auth': token,
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: JSON.stringify({
-      datasource: { datasourceLuid },
-      query: { fields: [], limit: 5000 },
-    }),
-  });
+// Download the .tdsx (ZIP) binary from the Tableau REST API.
+// Maps to: GET /api/{version}/sites/{siteId}/datasources/{luid}/content
+const downloadDatasource = async (token, siteId, datasourceLuid) => {
+  const res = await fetch(
+    restUrl(`/sites/${siteId}/datasources/${datasourceLuid}/content`),
+    { headers: { 'X-Tableau-Auth': token } },
+  );
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Tableau VizQL query failed (${res.status}): ${text.slice(0, 300)}`);
+    throw new Error(`Datasource download failed (${res.status}): ${text.slice(0, 200)}`);
   }
-  return res.json();
+  return Buffer.from(await res.arrayBuffer());
 };
 
-const findColumn = (headers, candidates) => {
-  const normalized = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
-  const want = candidates.map(normalized);
-  return headers.find((h) => want.includes(normalized(h))) ?? null;
-};
+// Pure-Node ZIP reader — extracts the first file matching targetSuffix.
+// Handles stored (method 0) and deflated (method 8) entries.
+const LOCAL_ENTRY_SIG = 0x04034b50;
 
-const parseClientCampaignData = (rows, headers) => {
-  const clientCol = findColumn(headers, ['client name', 'client_name', 'clientname', 'client']);
-  const campaignCol = findColumn(headers, ['campaign name', 'campaign_name', 'campaignname', 'campaign']);
-  const urlCol = findColumn(headers, ['notion url', 'notion_url', 'notionurl', 'url']);
+const extractFileFromZip = (buffer, targetSuffix) => {
+  let offset = 0;
+  while (offset + 30 < buffer.length) {
+    if (buffer.readUInt32LE(offset) !== LOCAL_ENTRY_SIG) break;
 
-  if (!clientCol || !campaignCol) {
-    throw new Error(
-      `Could not identify client/campaign columns. Found columns: ${headers.join(', ')}`,
-    );
-  }
+    const flags = buffer.readUInt16LE(offset + 6);
+    const method = buffer.readUInt16LE(offset + 8);
+    const compressedSize = buffer.readUInt32LE(offset + 18);
+    const fileNameLen = buffer.readUInt16LE(offset + 26);
+    const extraLen = buffer.readUInt16LE(offset + 28);
+    const fileName = buffer.toString('utf8', offset + 30, offset + 30 + fileNameLen);
+    const dataStart = offset + 30 + fileNameLen + extraLen;
 
-  const clientSet = new Set();
-  const campaigns = {};
+    // Bit 3: sizes are in a data descriptor after the data (streaming ZIP).
+    // We can't find the end without scanning forward, so stop here.
+    const isStreaming = (flags & 0x08) !== 0;
+    if (isStreaming && compressedSize === 0) break;
 
-  for (const row of rows) {
-    const client = (row[clientCol] ?? '').trim();
-    const campaign = (row[campaignCol] ?? '').trim();
-    const notionUrl = urlCol ? (row[urlCol] ?? '').trim() : '';
-    if (!client) continue;
-    clientSet.add(client);
-    if (!campaigns[client]) campaigns[client] = [];
-    if (campaign && !campaigns[client].some((c) => c.name === campaign)) {
-      campaigns[client].push({ name: campaign, notion_url: notionUrl });
+    if (fileName.endsWith(targetSuffix)) {
+      const raw = buffer.slice(dataStart, dataStart + compressedSize);
+      try {
+        return method === 0
+          ? raw.toString('utf8')
+          : inflateRawSync(raw).toString('utf8');
+      } catch (err) {
+        console.warn('[Tableau] ZIP inflate failed for', fileName, err.message);
+      }
     }
-  }
 
-  return {
-    clients: Array.from(clientSet).sort(),
-    campaigns,
-  };
+    offset = dataStart + compressedSize;
+  }
+  return null;
+};
+
+// Extract Notion database ID from .tds XML connection metadata.
+const extractNotionDbId = (tdsXml) => {
+  const patterns = [
+    /class=['"]notion['"][^>]*\bdbname=['"]([a-f0-9-]{32,36})['"]/i,
+    /\bdbname=['"]([a-f0-9-]{32,36})['"]/i,
+  ];
+  for (const re of patterns) {
+    const m = tdsXml.match(re);
+    if (m?.[1]) return m[1].replace(/-/g, '');
+  }
+  return null;
+};
+
+// Download the .tdsx and parse the .tds XML to find the Notion database ID.
+// Falls back to NOTION_CLIENT_DB_ID in config if extraction fails.
+const discoverNotionDbId = async (token, siteId, datasourceLuid) => {
+  try {
+    const tdsx = await downloadDatasource(token, siteId, datasourceLuid);
+    const tdsXml = extractFileFromZip(tdsx, '.tds');
+    if (tdsXml) {
+      const found = extractNotionDbId(tdsXml);
+      if (found) {
+        console.log('[Tableau] Notion DB ID extracted from .tds XML:', found);
+        return found;
+      }
+      console.log('[Tableau] .tds parsed but no Notion dbname attribute found');
+    } else {
+      console.log('[Tableau] Could not extract .tds from .tdsx archive');
+    }
+  } catch (err) {
+    console.warn('[Tableau] .tdsx download/parse error:', err.message);
+  }
+  if (config.notionClientDbId) {
+    console.log('[Tableau] Using NOTION_CLIENT_DB_ID from config');
+    return config.notionClientDbId;
+  }
+  return null;
 };
 
 export const getClientsAndCampaigns = async () => {
@@ -124,25 +157,15 @@ export const getClientsAndCampaigns = async () => {
   const { token, siteId } = await signIn();
   try {
     const datasourceLuid = await findDatasourceLuid(token, siteId);
-    const result = await queryDatasource(token, siteId, datasourceLuid);
+    const notionDbId = await discoverNotionDbId(token, siteId, datasourceLuid);
 
-    const rows = result.data ?? [];
-    if (!rows.length) return { clients: [], campaigns: {} };
-
-    const headers = Object.keys(rows[0]);
-    return parseClientCampaignData(rows, headers);
-  } catch (err) {
-    // VizQL Data Service returns 404 if not enabled for this site/tier.
-    // Fall back to querying the underlying Notion database directly.
-    if (err.message.includes('404') || err.message.includes('VizQL')) {
-      const { isNotionConfigured, getClientsAndCampaignsFromNotion } = await import('./notionService.js');
-      if (isNotionConfigured()) {
-        console.log('[Tableau] VizQL unavailable, falling back to Notion API');
-        return getClientsAndCampaignsFromNotion();
-      }
+    const { isNotionConfigured, getClientsAndCampaignsFromNotion } = await import('./notionService.js');
+    if (!isNotionConfigured()) {
+      throw new Error('Notion is not configured (missing NOTION_INTEGRATION_TOKEN).');
     }
-    throw err;
+    console.log('[Tableau] Querying Notion DB:', notionDbId ?? '(workspace search)');
+    return getClientsAndCampaignsFromNotion(notionDbId);
   } finally {
-    await signOut(token).catch(() => {});
+    signOut(token).catch(() => {});
   }
 };
