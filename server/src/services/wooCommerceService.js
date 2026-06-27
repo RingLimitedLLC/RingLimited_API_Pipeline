@@ -19,6 +19,21 @@ const flattenKeys = (obj, prefix = '', depth = 0) => {
   return keys;
 };
 
+// Flatten a nested object into a single-level object keyed by dot-notation paths.
+const flattenRecord = (obj, prefix = '', depth = 0) => {
+  if (depth > 3) return prefix ? { [prefix]: typeof obj === 'object' ? '[nested]' : obj } : {};
+  const result = {};
+  for (const [k, v] of Object.entries(obj || {})) {
+    const fullKey = prefix ? `${prefix}.${k}` : k;
+    if (v !== null && v !== undefined && typeof v === 'object' && !Array.isArray(v)) {
+      Object.assign(result, flattenRecord(v, fullKey, depth + 1));
+    } else {
+      result[fullKey] = Array.isArray(v) ? JSON.stringify(v) : v;
+    }
+  }
+  return result;
+};
+
 export const testWooCommerceConnection = async ({ woo_login_url, woo_consumer_key, woo_consumer_secret, woo_version = 'wc/v3' }) => {
   const baseUrl = buildBaseUrl(woo_login_url, woo_version);
   const auth = buildAuth(woo_consumer_key, woo_consumer_secret);
@@ -73,20 +88,28 @@ export const fetchWooCommerceObjects = async ({ woo_login_url, woo_consumer_key,
 export const fetchWooCommerceSchema = async (
   { woo_login_url, woo_consumer_key, woo_consumer_secret, woo_version = 'wc/v3' },
   endpoint,
+  { includeSample = false, dateAfter, dateBefore, sampleSize = 10 } = {},
 ) => {
   const baseUrl = buildBaseUrl(woo_login_url, woo_version);
   const auth = buildAuth(woo_consumer_key, woo_consumer_secret);
 
-  const res = await fetch(`${baseUrl}/${endpoint}?per_page=1`, {
+  const params = new URLSearchParams({ per_page: String(includeSample ? sampleSize : 1) });
+  if (dateAfter) params.set('after', dateAfter);
+  if (dateBefore) params.set('before', dateBefore);
+
+  const res = await fetch(`${baseUrl}/${endpoint}?${params}`, {
     headers: { Authorization: auth, Accept: 'application/json' },
   });
   if (!res.ok) throw new Error(`WooCommerce schema fetch failed (${res.status})`);
 
   const data = await res.json();
   if (!Array.isArray(data) || data.length === 0) {
-    return { fields: [], message: 'No records found; schema could not be derived' };
+    return { fields: [], flat_records: [], message: 'No records found; schema could not be derived' };
   }
-  return { fields: flattenKeys(data[0]), message: `Schema derived from live ${endpoint} record` };
+
+  const fields = flattenKeys(data[0]);
+  const flat_records = data.map((record) => flattenRecord(record));
+  return { fields, flat_records, message: `Schema derived from ${data.length} live ${endpoint} records` };
 };
 
 export const fetchWooCommerceData = async (

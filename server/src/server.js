@@ -302,12 +302,27 @@ app.post('/api/functions/:functionName', async (req, res) => {
   if (functionName === 'fetchWooCommerceSchema') {
     const connectionId = req.body?.connection_id || req.body?.client_id;
     const endpoint = req.body?.woo_page || req.body?.endpoint || 'orders';
+    const includeSample = Boolean(req.body?.include_sample);
+    // Build optional date filter from request body (same shape as syncJob date filter)
+    let dateAfter, dateBefore;
+    const dfType = req.body?.date_filter_type;
+    if (dfType === 'relative') {
+      const days = Number(req.body?.date_filter_relative_days) || 30;
+      dateAfter = new Date(Date.now() - days * 86_400_000).toISOString();
+    } else if (dfType === 'absolute') {
+      if (req.body?.date_filter_start) dateAfter = new Date(req.body.date_filter_start).toISOString();
+      if (req.body?.date_filter_end) dateBefore = new Date(req.body.date_filter_end).toISOString();
+    }
     try {
       const connection = await getEntityById('Connections', connectionId);
       if (!connection) return res.status(404).json({ message: 'Connection not found' });
       const credentials = await getConnectionCredentials(connection);
       if (!credentials.configured) return res.status(400).json({ message: `Credentials not configured: ${credentials.message}` });
-      const schema = await fetchWooCommerceSchema({ ...credentials.fields, woo_version: connection.woo_version || 'wc/v3' }, endpoint);
+      const schema = await fetchWooCommerceSchema(
+        { ...credentials.fields, woo_version: connection.woo_version || 'wc/v3' },
+        endpoint,
+        { includeSample, dateAfter, dateBefore },
+      );
       return res.json(schema);
     } catch (err) {
       return res.status(502).json({ message: err.message });
