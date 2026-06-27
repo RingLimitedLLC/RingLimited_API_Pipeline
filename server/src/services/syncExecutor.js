@@ -32,6 +32,30 @@ const toCsv = (rows) => {
   ].join('\n');
 };
 
+const matchesFilter = (record, { field, operator, value }) => {
+  const fieldVal = getNestedValue(record, field);
+  const strVal = String(fieldVal ?? '').toLowerCase().trim();
+  const filterVal = String(value ?? '').toLowerCase().trim();
+  switch (operator) {
+    case 'equals':       return strVal === filterVal;
+    case 'not_equals':   return strVal !== filterVal;
+    case 'contains':     return strVal.includes(filterVal);
+    case 'not_contains': return !strVal.includes(filterVal);
+    case 'starts_with':  return strVal.startsWith(filterVal);
+    case 'greater_than': return Number(fieldVal) > Number(value);
+    case 'less_than':    return Number(fieldVal) < Number(value);
+    case 'is_empty':     return fieldVal === null || fieldVal === undefined || strVal === '';
+    case 'is_not_empty': return fieldVal !== null && fieldVal !== undefined && strVal !== '';
+    default:             return true;
+  }
+};
+
+const applyRecordFilters = (records, filters) => {
+  const active = (filters || []).filter((f) => f.field && f.operator);
+  if (!active.length) return records;
+  return records.filter((record) => active.every((filter) => matchesFilter(record, filter)));
+};
+
 const applyFieldSelection = (records, selectedFields, fieldMappings) => {
   if (!selectedFields || !selectedFields.length) {
     // No field selection — return records as-is (flattened one level)
@@ -109,12 +133,17 @@ export const runSyncJob = async (syncJobId, connectionId) => {
       throw new Error(`Connection type "${connectionType}" does not support outbound data pull`);
     }
 
-    const processed = applyFieldSelection(rawRecords, syncJob.selected_fields, syncJob.field_mappings);
+    // Apply record-level filters, then field selection/mapping
+    const filteredRecords = applyRecordFilters(rawRecords, syncJob.record_filters);
+    const processed = applyFieldSelection(filteredRecords, syncJob.selected_fields, syncJob.field_mappings);
     const csvContent = toCsv(processed);
 
     const folderPath = connection.sharepoint_folder_path || '';
     const folderItemId = connection.sharepoint_folder_id || '';
-    const filename = `${syncJob.sharepoint_filename || syncJob.job_name.replace(/[^a-zA-Z0-9_-]/g, '_')}.csv`;
+    // Filename generated at run time so the date always reflects when the job ran
+    const typePrefix = syncJob.job_type === 'Target' ? 'T' : syncJob.job_type === 'Suppression' ? 'S' : 'C';
+    const runDate = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const filename = `${typePrefix}_X_${connection.client_name || 'Client'}_${runDate}_${syncJob.job_name || 'job'}.csv`;
 
     const writeResult = await writeFileToFolder(folderItemId, folderPath, filename, csvContent);
 

@@ -6,12 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { X, Loader2, ChevronDown, ChevronUp, RefreshCw, Eye } from "lucide-react";
+import { X, Loader2, ChevronDown, ChevronUp, RefreshCw, Eye, Plus } from "lucide-react";
 import FieldMappingSection from "@/components/client/FieldMappingSection";
 import { Textarea } from "@/components/ui/textarea";
 import ApiDataPreview from "@/components/client/ApiDataPreview";
 import FieldSelectPreview from "@/components/client/FieldSelectPreview";
-import { Calendar } from "@/components/ui/calendar";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -29,14 +28,17 @@ const FIELD_OPTIONS = {
 const OBJECT_TYPES = ["Leads","Contacts","Deals","Companies","Conversions","Orders","Custom"];
 const WOO_OBJECT_TYPES_FALLBACK = [{ label: "Orders", path: "orders" }];
 
-const TIME_OPTIONS = Array.from({ length: 24 }, (_, i) => {
-  const hour = i % 12 === 0 ? 12 : i % 12;
-  const ampm = i < 12 ? "AM" : "PM";
-  return { label: `${hour}:00 ${ampm}`, value: `${String(i).padStart(2,"0")}:00` };
-});
-
-const DAY_OPTIONS = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
-
+const FILTER_OPERATORS = [
+  { value: "equals",       label: "equals" },
+  { value: "not_equals",   label: "not equals" },
+  { value: "contains",     label: "contains" },
+  { value: "not_contains", label: "not contains" },
+  { value: "starts_with",  label: "starts with" },
+  { value: "greater_than", label: "greater than" },
+  { value: "less_than",    label: "less than" },
+  { value: "is_empty",     label: "is empty" },
+  { value: "is_not_empty", label: "is not empty" },
+];
 
 const DEFAULTS = {
   job_name: "",
@@ -45,13 +47,7 @@ const DEFAULTS = {
   custom_object_name: "",
   selected_fields: [],
   field_mappings: [],
-  sharepoint_filename: "",
-  frequency_type: "daily",
-  interval_value: 1,
-  interval_unit: "days",
-  scheduled_time: "09:00",
-  scheduled_day: "1",
-  scheduled_dates: [],
+  record_filters: [],
   is_enabled: true,
   date_filter_type: "none",
   date_filter_field: "",
@@ -109,7 +105,7 @@ export default function SyncJobDialog({ open, onClose, onSaved, client, job }) {
   useEffect(() => {
     if (!open) return; // only initialize when dialog opens
     if (job) {
-      setForm({ ...DEFAULTS, ...job });
+      setForm({ ...DEFAULTS, ...job, record_filters: job.record_filters || [] });
     } else {
       // Pre-fill API config from client credentials for new jobs
       const authTypeMap = {
@@ -179,6 +175,13 @@ export default function SyncJobDialog({ open, onClose, onSaved, client, job }) {
     }));
   };
 
+  const updateFilter = (idx, key, val) => {
+    setForm(f => ({
+      ...f,
+      record_filters: f.record_filters.map((filter, i) => i === idx ? { ...filter, [key]: val } : filter),
+    }));
+  };
+
   const handleSave = async () => {
     if (!form.job_name.trim()) { toast.error("Pipeline name is required"); return; }
     setSaving(true);
@@ -190,20 +193,9 @@ export default function SyncJobDialog({ open, onClose, onSaved, client, job }) {
       custom_object_name: form.custom_object_name,
       selected_fields: form.selected_fields,
       field_mappings: form.field_mappings || [],
+      record_filters: form.record_filters || [],
       campaign_name: client?.campaign_name || "",
-      sharepoint_filename: (() => {
-        const typePrefix = form.job_type === "Target" ? "T" : form.job_type === "Suppression" ? "S" : "C";
-        const clientName = (client?.client_name || "Client").replace(/\s+/g, "_");
-        const today = format(new Date(), "yyyyMMdd");
-        return `${typePrefix}_X_${clientName}_${today}`;
-      })(),
-      frequency_type: form.frequency_type,
-      interval_value: Number(form.interval_value),
-      interval_unit: form.interval_unit,
-      scheduled_time: form.scheduled_time,
-      scheduled_day: form.scheduled_day,
       is_enabled: form.is_enabled,
-      scheduled_dates: form.scheduled_dates || [],
       api_endpoint: form.api_endpoint,
       api_method: form.api_method,
       api_auth_type: form.api_auth_type,
@@ -497,109 +489,6 @@ export default function SyncJobDialog({ open, onClose, onSaved, client, job }) {
             </div>
           </div>
 
-          {/* Schedule */}
-          <div className="space-y-3">
-            <Label className="text-xs font-medium text-slate-500">Schedule</Label>
-            <Select value={form.frequency_type} onValueChange={v => set("frequency_type", v)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="daily">Daily</SelectItem>
-                <SelectItem value="weekly">Weekly</SelectItem>
-                <SelectItem value="interval">Every N hours/minutes</SelectItem>
-                <SelectItem value="custom_days">Every N days</SelectItem>
-                <SelectItem value="monthly">Monthly (pick dates)</SelectItem>
-                <SelectItem value="manual">Manual only</SelectItem>
-              </SelectContent>
-            </Select>
-
-            {/* Daily / Weekly — pick time */}
-            {["daily","weekly"].includes(form.frequency_type) && (
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-slate-500">Time of Day</Label>
-                  <Select value={form.scheduled_time} onValueChange={v => set("scheduled_time", v)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {TIME_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {form.frequency_type === "weekly" && (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-slate-500">Day of Week</Label>
-                    <Select value={form.scheduled_day} onValueChange={v => set("scheduled_day", v)}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {DAY_OPTIONS.map((d,i) => <SelectItem key={i} value={String(i)}>{d}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Interval */}
-            {form.frequency_type === "interval" && (
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-slate-500">Every</Label>
-                  <Input type="number" min={1} value={form.interval_value} onChange={e => set("interval_value", e.target.value)} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-slate-500">Unit</Label>
-                  <Select value={form.interval_unit} onValueChange={v => set("interval_unit", v)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="minutes">Minutes</SelectItem>
-                      <SelectItem value="hours">Hours</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            )}
-
-            {/* Custom days (e.g. every 60 days) */}
-            {form.frequency_type === "custom_days" && (
-              <div className="space-y-1.5">
-                <Label className="text-xs text-slate-500">Every N Days</Label>
-                <Input type="number" min={1} value={form.interval_value} onChange={e => set("interval_value", e.target.value)} placeholder="e.g. 60" />
-              </div>
-            )}
-
-            {/* Monthly — calendar date picker */}
-            {form.frequency_type === "monthly" && (
-              <div className="space-y-2">
-                <Label className="text-xs text-slate-500">Select pull dates (pick one or more dates on the calendar)</Label>
-                <div className="border rounded-lg overflow-hidden flex justify-center bg-white">
-                  <Calendar
-                    mode="multiple"
-                    selected={(form.scheduled_dates || []).map(d => new Date(d + "T12:00:00"))}
-                    onSelect={(dates) => set("scheduled_dates", (dates || []).map(d => format(d, "yyyy-MM-dd")))}
-                    className="p-2"
-                  />
-                </div>
-                {form.scheduled_dates?.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {form.scheduled_dates.map(d => (
-                      <Badge key={d} variant="secondary" className="flex items-center gap-1 text-xs pr-1">
-                        {format(new Date(d + "T12:00:00"), "MMM d, yyyy")}
-                        <button type="button" onClick={() => set("scheduled_dates", form.scheduled_dates.filter(x => x !== d))} className="hover:text-red-500 ml-0.5">
-                          <X className="h-3 w-3" />
-                        </button>
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Manual — informational note */}
-            {form.frequency_type === "manual" && (
-              <p className="text-xs text-slate-500 bg-slate-50 border rounded-lg p-3">
-                This job will not run automatically. Use the <strong>Run Now</strong> button on the job list to trigger it manually whenever needed.
-              </p>
-            )}
-          </div>
           {/* Field Mapping Section */}
           {form.selected_fields.length > 0 && (
             <FieldMappingSection
@@ -611,13 +500,82 @@ export default function SyncJobDialog({ open, onClose, onSaved, client, job }) {
             />
           )}
 
+          {/* Record Filters */}
+          <div className="border rounded-lg overflow-hidden">
+            <div className="px-4 py-3 bg-slate-50 border-b flex items-center justify-between">
+              <div>
+                <Label className="text-xs font-medium text-slate-700">Record Filters</Label>
+                <p className="text-xs text-slate-400 mt-0.5">Include only records that match all conditions below</p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs gap-1"
+                onClick={() => set("record_filters", [...(form.record_filters || []), { field: "", operator: "equals", value: "" }])}
+              >
+                <Plus className="h-3 w-3" /> Add Filter
+              </Button>
+            </div>
+            {(form.record_filters || []).length > 0 && (
+              <div className="p-3 space-y-2">
+                {form.record_filters.map((filter, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    {liveFields.length > 0 ? (
+                      <Select value={filter.field} onValueChange={v => updateFilter(idx, "field", v)}>
+                        <SelectTrigger className="flex-1 font-mono text-xs h-8"><SelectValue placeholder="Field…" /></SelectTrigger>
+                        <SelectContent>
+                          {liveFields.map(f => <SelectItem key={f} value={f} className="font-mono text-xs">{f}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        placeholder="field.name"
+                        value={filter.field}
+                        onChange={e => updateFilter(idx, "field", e.target.value)}
+                        className="flex-1 font-mono text-xs h-8"
+                      />
+                    )}
+                    <Select value={filter.operator} onValueChange={v => updateFilter(idx, "operator", v)}>
+                      <SelectTrigger className="w-36 text-xs h-8"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {FILTER_OPERATORS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    {!["is_empty", "is_not_empty"].includes(filter.operator) && (
+                      <Input
+                        placeholder="value"
+                        value={filter.value}
+                        onChange={e => updateFilter(idx, "value", e.target.value)}
+                        className="flex-1 text-xs h-8"
+                      />
+                    )}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0 text-red-400 hover:text-red-600 hover:bg-red-50"
+                      onClick={() => set("record_filters", form.record_filters.filter((_, i) => i !== idx))}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+                <p className="text-xs text-slate-400 pt-1">
+                  {form.record_filters.length} filter{form.record_filters.length !== 1 ? "s" : ""} — only records matching ALL conditions will be exported
+                </p>
+              </div>
+            )}
+          </div>
+
           <div className="space-y-1.5">
             <Label className="text-xs font-medium text-slate-500">SharePoint CSV Filename</Label>
             {(() => {
               const typePrefix = form.job_type === "Target" ? "T" : form.job_type === "Suppression" ? "S" : "C";
-              const clientName = (client?.client_name || "Client").replace(/\s+/g, "_");
+              const clientName = client?.client_name || "Client";
               const today = format(new Date(), "yyyyMMdd");
-              const autoName = `${typePrefix}_X_${clientName}_${today}`;
+              const jobName = form.job_name || "{Pipeline Name}";
+              const autoName = `${typePrefix}_X_${clientName}_${today}_${jobName}`;
               return (
                 <div className="flex items-center gap-0">
                   <div className="flex-1 flex items-center h-9 px-3 rounded-l-md border bg-slate-50 font-mono text-xs text-slate-700 truncate">
@@ -627,12 +585,11 @@ export default function SyncJobDialog({ open, onClose, onSaved, client, job }) {
                 </div>
               );
             })()}
-            <p className="text-xs text-slate-400">Filename is auto-generated from the pipeline type, client name, and date.</p>
+            <p className="text-xs text-slate-400">Filename is generated at run time: type prefix, client name, run date, and pipeline name.</p>
           </div>
 
-
-          {/* API Config Section */}
-          <div className="border rounded-lg overflow-hidden">
+          {/* API Config — for generic API connections only (WooCommerce handles auth via credentials) */}
+          {!isWooClient && <div className="border rounded-lg overflow-hidden">
             <button
               type="button"
               onClick={() => setApiOpen(v => !v)}
@@ -724,7 +681,7 @@ export default function SyncJobDialog({ open, onClose, onSaved, client, job }) {
                 </div>
               </div>
             )}
-          </div>
+          </div>}
         </div>
 
         <DialogFooter>
