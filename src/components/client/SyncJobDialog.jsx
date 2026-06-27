@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { X, Loader2, ChevronDown, ChevronUp, RefreshCw, Eye, Plus } from "lucide-react";
+import { X, Loader2, ChevronDown, ChevronUp, RefreshCw, Eye } from "lucide-react";
 import FieldMappingSection from "@/components/client/FieldMappingSection";
 import { Textarea } from "@/components/ui/textarea";
 import ApiDataPreview from "@/components/client/ApiDataPreview";
@@ -45,7 +45,6 @@ const DEFAULTS = {
   custom_object_name: "",
   selected_fields: [],
   field_mappings: [],
-  campaign_name: "",
   sharepoint_filename: "",
   frequency_type: "daily",
   interval_value: 1,
@@ -83,11 +82,6 @@ export default function SyncJobDialog({ open, onClose, onSaved, client, job }) {
   const [fieldSelectPreviewOpen, setFieldSelectPreviewOpen] = useState(false);
   const [wooObjects, setWooObjects] = useState([]);
   const [fetchingObjects, setFetchingObjects] = useState(false);
-  const [campaigns, setCampaigns] = useState([]);
-  const [addingCampaign, setAddingCampaign] = useState(false);
-  const [newCampaignName, setNewCampaignName] = useState("");
-  const [savingCampaign, setSavingCampaign] = useState(false);
-  const [products, setProducts] = useState([]);
 
   const isWooClient = client?.crm_type === "WooCommerce";
 
@@ -138,28 +132,6 @@ export default function SyncJobDialog({ open, onClose, onSaved, client, job }) {
     setLiveArraySources([]);
     setFieldSearch("");
     setWooObjects([]);
-    setAddingCampaign(false);
-    setNewCampaignName("");
-    setProducts([]);
-
-    // Load campaigns for this client
-    if (client?.id) {
-      base44.entities.Campaigns.filter({ client_id: client.id }, "campaign_name")
-        .then(res => {
-          setCampaigns(res || []);
-          // If editing and has a campaign, load its products
-          const existingCampaignName = job?.campaign_name;
-          if (existingCampaignName && res?.length) {
-            const camp = res.find(c => c.campaign_name === existingCampaignName);
-            if (camp) {
-              base44.entities.CampaignProducts.filter({ campaign_id: camp.id }, "product_name")
-                .then(p => setProducts(p || []))
-                .catch(() => {});
-            }
-          }
-        })
-        .catch(() => setCampaigns([]));
-    }
 
     // For WooCommerce clients, dynamically discover accessible objects
     if (client?.crm_type === "WooCommerce") {
@@ -175,14 +147,6 @@ export default function SyncJobDialog({ open, onClose, onSaved, client, job }) {
   }, [job, open]);
 
   const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
-
-  const loadProductsForCampaign = (campaignName) => {
-    const campaign = campaigns.find(c => c.campaign_name === campaignName);
-    if (!campaign) { setProducts([]); return; }
-    base44.entities.CampaignProducts.filter({ campaign_id: campaign.id }, "product_name")
-      .then(res => setProducts(res || []))
-      .catch(() => setProducts([]));
-  };
 
   // For WooCommerce, use live-fetched fields if available, otherwise fall back to static list
   const availableFields = (isWooClient && liveFields.length > 0)
@@ -226,16 +190,12 @@ export default function SyncJobDialog({ open, onClose, onSaved, client, job }) {
       custom_object_name: form.custom_object_name,
       selected_fields: form.selected_fields,
       field_mappings: form.field_mappings || [],
-      campaign_name: form.campaign_name || "",
-      product_id: form.product_id || "",
+      campaign_name: client?.campaign_name || "",
       sharepoint_filename: (() => {
         const typePrefix = form.job_type === "Target" ? "T" : form.job_type === "Suppression" ? "S" : "C";
         const clientName = (client?.client_name || "Client").replace(/\s+/g, "_");
         const today = format(new Date(), "yyyyMMdd");
-        const productName = products.find(p => p.id === form.product_id)?.product_name?.replace(/\s+/g, "_") || "";
-        return productName
-          ? `${typePrefix}_X_${clientName}_${today}_${productName}`
-          : `${typePrefix}_X_${clientName}_${today}`;
+        return `${typePrefix}_X_${clientName}_${today}`;
       })(),
       frequency_type: form.frequency_type,
       interval_value: Number(form.interval_value),
@@ -281,65 +241,6 @@ export default function SyncJobDialog({ open, onClose, onSaved, client, job }) {
         </DialogHeader>
 
         <div className="space-y-5 py-2">
-          {/* Campaign Name */}
-          <div className="space-y-1.5">
-            <Label className="text-xs font-medium text-slate-500">Campaign Name</Label>
-            {!addingCampaign ? (
-              <div className="flex gap-2">
-                <Select value={form.campaign_name} onValueChange={v => { set("campaign_name", v); set("product_id", ""); loadProductsForCampaign(v); }}>
-                  <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="Select a campaign…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {campaigns.map(c => (
-                      <SelectItem key={c.id} value={c.campaign_name}>{c.campaign_name}</SelectItem>
-                    ))}
-                    {campaigns.length === 0 && (
-                      <div className="px-3 py-2 text-xs text-slate-400">No campaigns yet</div>
-                    )}
-                  </SelectContent>
-                </Select>
-                <Button type="button" variant="outline" size="sm" className="shrink-0 gap-1.5 text-xs" onClick={() => setAddingCampaign(true)}>
-                  <Plus className="h-3 w-3" /> New
-                </Button>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <Input
-                  autoFocus
-                  placeholder="e.g. Summer2024_Retargeting"
-                  value={newCampaignName}
-                  onChange={e => setNewCampaignName(e.target.value)}
-                  className="flex-1"
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  className="shrink-0 bg-indigo-600 hover:bg-indigo-700 text-xs"
-                  disabled={savingCampaign || !newCampaignName.trim()}
-                  onClick={async () => {
-                    setSavingCampaign(true);
-                    const created = await base44.entities.Campaigns.create({ client_id: client.id, campaign_name: newCampaignName.trim(), status: "Active" });
-                    setCampaigns(prev => [...prev, created]);
-                    set("campaign_name", newCampaignName.trim());
-                    setNewCampaignName("");
-                    setAddingCampaign(false);
-                    setSavingCampaign(false);
-                    toast.success("Campaign added");
-                  }}
-                >
-                  {savingCampaign ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
-                </Button>
-                <Button type="button" variant="ghost" size="sm" className="shrink-0 text-xs" onClick={() => { setAddingCampaign(false); setNewCampaignName(""); }}>
-                  Cancel
-                </Button>
-              </div>
-            )}
-            <p className="text-xs text-slate-400">
-              Files will be delivered to: <span className="font-mono text-slate-500">Ring Data Ops / DataAutomation / {"{ClientName}"} / {form.campaign_name || "{CampaignName}"}/</span>
-            </p>
-          </div>
-
           {/* Pipeline Name */}
           <div className="space-y-1.5">
             <Label className="text-xs font-medium text-slate-500">Pipeline Name</Label>
@@ -358,25 +259,6 @@ export default function SyncJobDialog({ open, onClose, onSaved, client, job }) {
               </SelectContent>
             </Select>
           </div>
-
-          {/* Product Assignment (Target and Suppression only) */}
-          {form.job_type !== "Conversion" && <div className="space-y-1.5">
-            <Label className="text-xs font-medium text-slate-500">Assign to Product <span className="text-slate-400 font-normal">(optional)</span></Label>
-            <Select value={form.product_id || ""} onValueChange={v => set("product_id", v)}>
-              <SelectTrigger>
-                <SelectValue placeholder={products.length === 0 ? (form.campaign_name ? "No products in this campaign" : "Select a campaign first…") : "Select a product…"} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={null}>— None —</SelectItem>
-                {products.map(p => (
-                  <SelectItem key={p.id} value={p.id}>{p.product_name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {form.product_id && (
-              <p className="text-xs text-slate-400">This pipeline will be associated with the selected product.</p>
-            )}
-          </div>}
 
           {/* Object Type */}
           <div className="space-y-1.5">
@@ -735,10 +617,7 @@ export default function SyncJobDialog({ open, onClose, onSaved, client, job }) {
               const typePrefix = form.job_type === "Target" ? "T" : form.job_type === "Suppression" ? "S" : "C";
               const clientName = (client?.client_name || "Client").replace(/\s+/g, "_");
               const today = format(new Date(), "yyyyMMdd");
-              const productName = products.find(p => p.id === form.product_id)?.product_name?.replace(/\s+/g, "_") || "";
-              const autoName = productName
-                ? `${typePrefix}_X_${clientName}_${today}_${productName}`
-                : `${typePrefix}_X_${clientName}_${today}`;
+              const autoName = `${typePrefix}_X_${clientName}_${today}`;
               return (
                 <div className="flex items-center gap-0">
                   <div className="flex-1 flex items-center h-9 px-3 rounded-l-md border bg-slate-50 font-mono text-xs text-slate-700 truncate">
@@ -748,7 +627,7 @@ export default function SyncJobDialog({ open, onClose, onSaved, client, job }) {
                 </div>
               );
             })()}
-            <p className="text-xs text-slate-400">Filename is auto-generated from the pipeline type, client name, date, and product.</p>
+            <p className="text-xs text-slate-400">Filename is auto-generated from the pipeline type, client name, and date.</p>
           </div>
 
 

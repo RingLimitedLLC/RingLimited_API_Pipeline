@@ -50,7 +50,7 @@ export default function StepClientInfo({ form, update, onNext, onBack }) {
       {isLoading && (
         <div className="flex items-center justify-center py-10 gap-2 text-slate-400">
           <Loader2 className="h-5 w-5 animate-spin" />
-          <span className="text-sm">Loading from Tableau…</span>
+          <span className="text-sm">Loading clients…</span>
         </div>
       )}
 
@@ -58,7 +58,7 @@ export default function StepClientInfo({ form, update, onNext, onBack }) {
         <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex gap-2 text-xs text-red-700">
           <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
           <div>
-            <p className="font-medium">Could not load clients from Tableau</p>
+            <p className="font-medium">Could not load clients</p>
             <p className="text-red-600 mt-0.5">{error.message}</p>
           </div>
         </div>
