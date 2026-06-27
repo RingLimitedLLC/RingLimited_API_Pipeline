@@ -131,7 +131,18 @@ export const getClientsAndCampaigns = async () => {
 
     const headers = Object.keys(rows[0]);
     return parseClientCampaignData(rows, headers);
+  } catch (err) {
+    // VizQL Data Service returns 404 if not enabled for this site/tier.
+    // Fall back to querying the underlying Notion database directly.
+    if (err.message.includes('404') || err.message.includes('VizQL')) {
+      const { isNotionConfigured, getClientsAndCampaignsFromNotion } = await import('./notionService.js');
+      if (isNotionConfigured()) {
+        console.log('[Tableau] VizQL unavailable, falling back to Notion API');
+        return getClientsAndCampaignsFromNotion();
+      }
+    }
+    throw err;
   } finally {
-    await signOut(token);
+    await signOut(token).catch(() => {});
   }
 };
