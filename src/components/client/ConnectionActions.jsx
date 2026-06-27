@@ -16,52 +16,52 @@ export default function ConnectionActions({ client, onUpdate }) {
     "Error": "bg-red-100 text-red-700",
   };
 
+  const isConnection = Boolean(client?.direction);
+
   const handleTestConnection = async () => {
     setTesting(true);
-    // Simulate a test — in production this would call the CRM API
-    await new Promise(r => setTimeout(r, 2000));
-    
-    const hasCredentials = client.api_key || client.access_token;
-    const newStatus = hasCredentials ? "Connected" : "Error";
-    
-    await base44.entities.Clients.update(client.id, { connection_status: newStatus });
-    
-    if (newStatus === "Connected") {
-      toast.success("Connection successful!");
-    } else {
-      toast.error("Connection failed — check your credentials");
+    try {
+      const idField = isConnection ? { connection_id: client.id } : { client_id: client.id };
+      const res = await base44.functions.invoke("testConnection", idField);
+      const ok = res.data?.success;
+      const newStatus = ok ? "Connected" : "Error";
+      if (isConnection) {
+        await base44.entities.Connections.update(client.id, { connection_status: newStatus });
+      } else {
+        await base44.entities.Clients.update(client.id, { connection_status: newStatus });
+      }
+      if (ok) toast.success(`Credential check passed (${res.data?.source || "vault"})`);
+      else toast.error(res.data?.message || "Credential lookup failed");
+      onUpdate();
+    } catch (err) {
+      toast.error(`Test failed: ${err.message}`);
+    } finally {
+      setTesting(false);
     }
-    onUpdate();
-    setTesting(false);
   };
 
   const handleManualSync = async () => {
     setSyncing(true);
-    await new Promise(r => setTimeout(r, 2500));
-    
-    const records = Math.floor(Math.random() * 50) + 5;
-    const success = Math.random() > 0.2;
-    
-    await base44.entities.SyncLogs.create({
-      client_id: client.id,
-      sync_type: "Manual",
-      status: success ? "Success" : "Failed",
-      records_processed: success ? records : 0,
-      error_message: success ? "" : "Timeout connecting to CRM API",
-    });
-
-    await base44.entities.Clients.update(client.id, {
-      last_sync_at: new Date().toISOString(),
-      connection_status: success ? "Connected" : "Error",
-    });
-
-    if (success) {
-      toast.success(`Synced ${records} records successfully`);
-    } else {
-      toast.error("Sync failed — see logs for details");
+    try {
+      await base44.entities.SyncLogs.create({
+        client_id: isConnection ? client.client_id : client.id,
+        connection_id: isConnection ? client.id : undefined,
+        sync_type: "Manual",
+        status: "Running",
+        records_processed: 0,
+      });
+      if (isConnection) {
+        await base44.entities.Connections.update(client.id, { last_sync_at: new Date().toISOString() });
+      } else {
+        await base44.entities.Clients.update(client.id, { last_sync_at: new Date().toISOString() });
+      }
+      toast.success("Manual sync job queued");
+      onUpdate();
+    } catch (err) {
+      toast.error(`Failed to trigger sync: ${err.message}`);
+    } finally {
+      setSyncing(false);
     }
-    onUpdate();
-    setSyncing(false);
   };
 
   return (

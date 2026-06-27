@@ -1,72 +1,39 @@
 import React, { useState } from "react";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { useQuery } from "@tanstack/react-query";
+import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Building2, ArrowRight, ArrowLeft, Eye, EyeOff, Info } from "lucide-react";
-
-const CredentialField = ({ field, value, onChange }) => {
-  const [show, setShow] = useState(false);
-
-  if (field.kind === "select") {
-    return (
-      <Select value={value || field.defaultValue || ""} onValueChange={onChange}>
-        <SelectTrigger><SelectValue /></SelectTrigger>
-        <SelectContent>
-          {(field.options || []).map((opt) => (
-            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    );
-  }
-
-  if (field.secret) {
-    return (
-      <div className="relative">
-        <Input
-          type={show ? "text" : "password"}
-          value={value || ""}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={field.placeholder || ""}
-          className="pr-10"
-          autoComplete="off"
-        />
-        <button
-          type="button"
-          onClick={() => setShow((s) => !s)}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-        >
-          {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <Input
-      type={field.kind === "url" ? "url" : "text"}
-      value={value || ""}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={field.placeholder || ""}
-    />
-  );
-};
+import { Building2, ArrowRight, ArrowLeft, Loader2, AlertCircle } from "lucide-react";
 
 export default function StepClientInfo({ form, update, onNext, onBack }) {
-  const ct = form.connection_type;
-  const credFields = ct?.fields ?? [];
-  const settingFields = ct?.settings ?? [];
-  const hasSecrets = credFields.some((f) => f.secret);
+  const [selectedClient, setSelectedClient] = useState(form.client_name || "");
 
-  const updateField = (key, value) =>
-    update({ connection_type_fields: { ...form.connection_type_fields, [key]: value } });
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["clientsAndCampaigns"],
+    queryFn: async () => {
+      const result = await base44.functions.invoke("getClientsAndCampaigns");
+      return result.data ?? result;
+    },
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
 
-  const canProceed =
-    form.client_name.trim() &&
-    credFields
-      .filter((f) => f.required)
-      .every((f) => (form.connection_type_fields?.[f.key] || "").trim());
+  const clients = data?.clients ?? [];
+  const allCampaigns = data?.campaigns ?? {};
+  const campaignsForClient = selectedClient ? (allCampaigns[selectedClient] ?? []) : [];
+
+  const handleClientChange = (name) => {
+    setSelectedClient(name);
+    update({ client_name: name, campaign_name: "" });
+  };
+
+  const handleCampaignChange = (name) => {
+    const campaignObj = campaignsForClient.find((c) => c.name === name);
+    update({ campaign_name: name, notion_url: campaignObj?.notion_url ?? "" });
+  };
+
+  const canProceed = form.client_name && form.campaign_name;
 
   return (
     <div className="space-y-5">
@@ -75,62 +42,61 @@ export default function StepClientInfo({ form, update, onNext, onBack }) {
           <Building2 className="h-5 w-5 text-white" />
         </div>
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">Client Details</h2>
-          <p className="text-sm text-slate-500">{ct?.label} connection</p>
+          <h2 className="text-lg font-semibold text-slate-900">Client & Campaign</h2>
+          <p className="text-sm text-slate-500">Select the client and campaign for this connection</p>
         </div>
       </div>
 
-      {hasSecrets && (
-        <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 flex gap-2 text-xs text-slate-600">
-          <Info className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
-          Credentials are stored encrypted in 1Password and never exposed in the UI after saving.
+      {isLoading && (
+        <div className="flex items-center justify-center py-10 gap-2 text-slate-400">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          <span className="text-sm">Loading from Tableau…</span>
         </div>
       )}
 
-      <div className="space-y-1.5">
-        <Label className="text-xs font-medium text-slate-600">Client Name *</Label>
-        <Input
-          value={form.client_name}
-          onChange={(e) => update({ client_name: e.target.value })}
-          placeholder="e.g. Acme Corporation"
-          autoFocus
-        />
-      </div>
-
-      {credFields.map((field) => (
-        <div key={field.key} className="space-y-1.5">
-          <Label className="text-xs font-medium text-slate-600">
-            {field.label}
-            {field.required
-              ? " *"
-              : <span className="text-slate-400 font-normal"> (optional)</span>}
-          </Label>
-          <CredentialField
-            field={field}
-            value={form.connection_type_fields?.[field.key] || ""}
-            onChange={(v) => updateField(field.key, v)}
-          />
-        </div>
-      ))}
-
-      {settingFields.length > 0 && (
-        <>
-          <div className="border-t border-slate-100 pt-1">
-            <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-3">Advanced Settings</p>
+      {error && !isLoading && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex gap-2 text-xs text-red-700">
+          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-medium">Could not load clients from Tableau</p>
+            <p className="text-red-600 mt-0.5">{error.message}</p>
           </div>
-          {settingFields.map((field) => (
-            <div key={field.key} className="space-y-1.5">
-              <Label className="text-xs font-medium text-slate-600">
-                {field.label}
-                <span className="text-slate-400 font-normal"> (optional)</span>
-              </Label>
-              <CredentialField
-                field={field}
-                value={form.connection_type_fields?.[field.key] || ""}
-                onChange={(v) => updateField(field.key, v)}
-              />
-            </div>
-          ))}
+        </div>
+      )}
+
+      {!isLoading && !error && (
+        <>
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium text-slate-600">Client *</Label>
+            <Select value={selectedClient} onValueChange={handleClientChange}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a client…" />
+              </SelectTrigger>
+              <SelectContent>
+                {clients.map((name) => (
+                  <SelectItem key={name} value={name}>{name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium text-slate-600">Campaign *</Label>
+            <Select
+              value={form.campaign_name}
+              onValueChange={handleCampaignChange}
+              disabled={!selectedClient}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder={selectedClient ? "Select a campaign…" : "Select a client first"} />
+              </SelectTrigger>
+              <SelectContent>
+                {campaignsForClient.map((c) => (
+                  <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </>
       )}
 

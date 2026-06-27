@@ -16,6 +16,10 @@ import {
   getClientCredentials,
   saveClientCredentials,
   deleteClientCredentials,
+  buildConnectionCredentialMetadata,
+  getConnectionCredentials,
+  saveConnectionCredentials,
+  deleteConnectionCredentials,
 } from './services/onePasswordService.js';
 import {
   listEntities,
@@ -29,6 +33,7 @@ import {
   browseFolder,
 } from './services/sharepointService.js';
 import { getWorkspaceUsers } from './services/notionService.js';
+import { getClientsAndCampaigns as getTableauClientsAndCampaigns } from './services/tableauService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -154,12 +159,14 @@ app.delete('/api/entities/:entityName/:id', async (req, res) => {
   const { entityName, id } = req.params;
 
   try {
-    // For client deletions, clean up credentials before removing the record
     if (entityName === 'Clients') {
       const client = await getEntityById('Clients', id);
-      if (client) {
-        await deleteClientCredentials(client).catch(() => {});
-      }
+      if (client) await deleteClientCredentials(client).catch(() => {});
+    }
+
+    if (entityName === 'Connections') {
+      const connection = await getEntityById('Connections', id);
+      if (connection) await deleteConnectionCredentials(connection).catch(() => {});
     }
 
     const deleted = await deleteEntity(entityName, id);
@@ -177,21 +184,38 @@ app.post('/api/functions/:functionName', async (req, res) => {
   }
 
   if (functionName === 'saveConnectionCredentials') {
+    const connectionId = req.body?.connection_id;
     const clientId = req.body?.client_id || req.body?.clientId;
-    const client = await getEntityById('Clients', clientId);
-    if (!client) {
-      return res.status(404).json({ message: 'Client not found' });
+
+    if (connectionId) {
+      // New: connection-keyed credential storage
+      const connection = await getEntityById('Connections', connectionId);
+      if (!connection) return res.status(404).json({ message: 'Connection not found' });
+      try {
+        const saveResult = await saveConnectionCredentials(connection, req.body);
+        const metadata = buildConnectionCredentialMetadata({ connection, payload: req.body, saveResult });
+        const updatedConnection = await updateEntity('Connections', connectionId, metadata);
+        return res.json({
+          success: true,
+          source: saveResult.source,
+          connection_type: saveResult.connectionType.id,
+          credential_item_id: saveResult.itemId,
+          credential_field_status: saveResult.fieldStatus,
+          connection: updatedConnection,
+        });
+      } catch (error) {
+        console.error('[1Password] saveConnectionCredentials(connection) failed:', error.message);
+        return res.status(400).json({ message: error.message });
+      }
     }
 
+    // Legacy: client-keyed credential storage
+    const client = await getEntityById('Clients', clientId);
+    if (!client) return res.status(404).json({ message: 'Client not found' });
     try {
       const saveResult = await saveClientCredentials(client, req.body);
-      const metadata = buildClientCredentialMetadata({
-        client,
-        payload: req.body,
-        saveResult,
-      });
+      const metadata = buildClientCredentialMetadata({ client, payload: req.body, saveResult });
       const updatedClient = await updateEntity('Clients', clientId, metadata);
-
       return res.json({
         success: true,
         source: saveResult.source,
@@ -201,18 +225,32 @@ app.post('/api/functions/:functionName', async (req, res) => {
         client: updatedClient,
       });
     } catch (error) {
-      console.error('[1Password] saveConnectionCredentials failed:', error.message);
+      console.error('[1Password] saveConnectionCredentials(client) failed:', error.message);
       return res.status(400).json({ message: error.message });
     }
   }
 
   if (functionName === 'testConnection' || functionName === 'testWooCommerceConnection') {
+    const connectionId = req.body?.connection_id;
     const clientId = req.body?.client_id || req.body?.clientId;
-    const client = await getEntityById('Clients', clientId);
-    if (!client) {
-      return res.status(404).json({ message: 'Client not found' });
+
+    if (connectionId) {
+      const connection = await getEntityById('Connections', connectionId);
+      if (!connection) return res.status(404).json({ message: 'Connection not found' });
+      const credentials = await getConnectionCredentials(connection);
+      return res.json({
+        function: functionName,
+        success: credentials.configured,
+        status_code: credentials.configured ? 200 : 404,
+        source: credentials.source,
+        connection_type: credentials.connectionType?.id,
+        credential_field_status: credentials.fieldStatus || {},
+        message: credentials.configured ? 'Credential lookup succeeded.' : credentials.message || 'Credential lookup failed.',
+      });
     }
 
+    const client = await getEntityById('Clients', clientId);
+    if (!client) return res.status(404).json({ message: 'Client not found' });
     const credentials = await getClientCredentials(client);
     return res.json({
       function: functionName,
@@ -221,9 +259,7 @@ app.post('/api/functions/:functionName', async (req, res) => {
       source: credentials.source,
       connection_type: credentials.connectionType?.id,
       credential_field_status: credentials.fieldStatus || {},
-      message: credentials.configured
-        ? 'Credential lookup succeeded.'
-        : credentials.message || 'Credential lookup failed.',
+      message: credentials.configured ? 'Credential lookup succeeded.' : credentials.message || 'Credential lookup failed.',
     });
   }
 
@@ -231,6 +267,15 @@ app.post('/api/functions/:functionName', async (req, res) => {
     try {
       const users = await getWorkspaceUsers();
       return res.json({ users });
+    } catch (error) {
+      return res.status(502).json({ message: error.message });
+    }
+  }
+
+  if (functionName === 'getClientsAndCampaigns') {
+    try {
+      const data = await getTableauClientsAndCampaigns();
+      return res.json(data);
     } catch (error) {
       return res.status(502).json({ message: error.message });
     }

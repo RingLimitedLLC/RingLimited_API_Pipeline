@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
-import { CheckCircle2, ArrowLeft, Loader2 } from "lucide-react";
+import { CheckCircle2, ArrowLeft, Loader2, FolderOpen } from "lucide-react";
 import { toast } from "sonner";
+import SharePointFolderPicker from "@/components/client/SharePointFolderPicker";
 
 const Row = ({ label, value }) => (
   <div className="flex justify-between py-2 border-b border-slate-100 last:border-0">
@@ -21,24 +22,50 @@ const freqLabel = (form) => {
   return "Manual only";
 };
 
-export default function StepReview({ form, onBack, onFinished }) {
+export default function StepReview({ form, update, onBack, onFinished }) {
   const [saving, setSaving] = useState(false);
   const ct = form.connection_type;
   const credFields = ct?.fields ?? [];
   const settingFields = ct?.settings ?? [];
   const allFields = [...credFields, ...settingFields];
+  const isInbound = ct?.direction === "inbound";
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      // Step 1: create the client record — always
-      const newClient = await base44.entities.Clients.create({
+      // 1. Find or create Client
+      const existingClients = await base44.entities.Clients.filter({ client_name: form.client_name });
+      let client = existingClients[0];
+      if (!client) {
+        client = await base44.entities.Clients.create({ client_name: form.client_name });
+      }
+
+      // 2. Find or create Campaign
+      const existingCampaigns = await base44.entities.Campaigns.filter({
+        client_id: client.id,
+        campaign_name: form.campaign_name,
+      });
+      let campaign = existingCampaigns[0];
+      if (!campaign) {
+        campaign = await base44.entities.Campaigns.create({
+          client_id: client.id,
+          client_name: form.client_name,
+          campaign_name: form.campaign_name,
+          notion_url: form.notion_url || "",
+        });
+      }
+
+      // 3. Create Connection
+      const connection = await base44.entities.Connections.create({
+        client_id: client.id,
         client_name: form.client_name,
+        campaign_id: campaign.id,
+        campaign_name: form.campaign_name,
         connection_type: ct?.id,
-        crm_type: ct?.label,
-        auth_type: ct?.defaultAuthType,
+        platform_label: ct?.label,
+        direction: ct?.direction || "outbound",
         connection_status: "Not Connected",
-        frequency_type: form.frequency_type,
+        frequency_type: isInbound ? "manual" : form.frequency_type,
         interval_value: form.interval_value,
         interval_unit: form.interval_unit,
         scheduled_time: form.scheduled_time,
@@ -47,31 +74,29 @@ export default function StepReview({ form, onBack, onFinished }) {
         sharepoint_folder_path: form.sharepoint_folder?.path || "",
       });
 
-      // Step 2: save credentials — non-blocking; warns if 1Password Connect is not yet reachable
-      const hasFields = allFields.some(
-        (f) => (form.connection_type_fields?.[f.key] || "").trim()
-      );
+      // 4. Save credentials if any fields were entered
+      const hasFields = allFields.some((f) => (form.connection_type_fields?.[f.key] || "").trim());
       if (hasFields) {
         try {
           await base44.functions.invoke("saveConnectionCredentials", {
-            client_id: newClient.id,
+            connection_id: connection.id,
             connection_type: ct?.id,
             fields: form.connection_type_fields,
           });
-          toast.success(`${form.client_name} added successfully!`);
         } catch (credError) {
           toast.warning(
-            `${form.client_name} created, but credentials could not be saved: ${credError.message}. ` +
-            `You can re-enter them from the client detail page once 1Password Connect is available.`
+            `Connection created, but credentials could not be saved: ${credError.message}. ` +
+            `You can re-enter them from the connection detail page.`
           );
+          onFinished();
+          return;
         }
-      } else {
-        toast.success(`${form.client_name} added successfully!`);
       }
 
+      toast.success(`${form.client_name} / ${form.campaign_name} connection added!`);
       onFinished();
     } catch (error) {
-      toast.error(`Failed to create client: ${error.message}`);
+      toast.error(`Failed to create connection: ${error.message}`);
     } finally {
       setSaving(false);
     }
@@ -85,17 +110,19 @@ export default function StepReview({ form, onBack, onFinished }) {
         </div>
         <div>
           <h2 className="text-lg font-semibold text-slate-900">Review & Confirm</h2>
-          <p className="text-sm text-slate-500">Everything look right? Let's create the client.</p>
+          <p className="text-sm text-slate-500">Everything look right? Let's create the connection.</p>
         </div>
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-slate-50 divide-y divide-slate-100 overflow-hidden">
         <div className="px-4 py-2 bg-slate-100">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Client Info</p>
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Connection</p>
         </div>
         <div className="px-4">
-          <Row label="Client Name" value={form.client_name} />
+          <Row label="Client" value={form.client_name} />
+          <Row label="Campaign" value={form.campaign_name} />
           <Row label="Platform" value={ct?.label} />
+          <Row label="Direction" value={isInbound ? "Inbound (client pushes data)" : "Outbound (we pull data)"} />
         </div>
 
         {allFields.length > 0 && (
@@ -118,22 +145,27 @@ export default function StepReview({ form, onBack, onFinished }) {
           </>
         )}
 
-        <div className="px-4 py-2 bg-slate-100">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Sync Schedule</p>
-        </div>
-        <div className="px-4">
-          <Row label="Frequency" value={freqLabel(form)} />
-        </div>
+        {!isInbound && (
+          <>
+            <div className="px-4 py-2 bg-slate-100">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Sync Schedule</p>
+            </div>
+            <div className="px-4">
+              <Row label="Frequency" value={freqLabel(form)} />
+            </div>
+          </>
+        )}
+      </div>
 
-        <div className="px-4 py-2 bg-slate-100">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">SharePoint Delivery</p>
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <FolderOpen className="h-4 w-4 text-slate-400" />
+          <span className="text-xs font-medium text-slate-600">SharePoint Delivery Folder <span className="text-slate-400 font-normal">(optional)</span></span>
         </div>
-        <div className="px-4">
-          <Row
-            label="Destination folder"
-            value={form.sharepoint_folder?.path || form.sharepoint_folder?.name || "Not set (can configure later)"}
-          />
-        </div>
+        <SharePointFolderPicker
+          value={form.sharepoint_folder}
+          onChange={(folder) => update({ sharepoint_folder: folder })}
+        />
       </div>
 
       <div className="flex justify-between pt-2">
@@ -147,7 +179,7 @@ export default function StepReview({ form, onBack, onFinished }) {
           className="text-white px-6"
         >
           {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
-          {saving ? "Creating…" : "Create Client"}
+          {saving ? "Creating…" : "Create Connection"}
         </Button>
       </div>
     </div>

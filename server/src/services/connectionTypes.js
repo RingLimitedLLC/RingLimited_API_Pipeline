@@ -7,6 +7,7 @@ export const CONNECTION_TYPES = [
     aliases: ['API Key', 'HubSpot', 'Salesforce', 'GoHighLevel', 'Other'],
     authTypes: ['API Key'],
     defaultAuthType: 'API Key',
+    direction: 'outbound',
     description: 'Standard API endpoint authenticated with a single API key.',
     fields: [
       {
@@ -44,6 +45,7 @@ export const CONNECTION_TYPES = [
     aliases: ['OAuth2', 'Bearer Token'],
     authTypes: ['OAuth2'],
     defaultAuthType: 'OAuth2',
+    direction: 'outbound',
     description: 'Standard API endpoint authenticated with bearer credentials.',
     fields: [
       {
@@ -90,6 +92,7 @@ export const CONNECTION_TYPES = [
     aliases: ['Webhook Only'],
     authTypes: ['Webhook Only'],
     defaultAuthType: 'Webhook Only',
+    direction: 'inbound',
     description: 'Inbound-only connection where the upstream system pushes data to this app.',
     fields: [
       {
@@ -109,6 +112,7 @@ export const CONNECTION_TYPES = [
     aliases: ['Client Post'],
     authTypes: ['Client Post'],
     defaultAuthType: 'Client Post',
+    direction: 'inbound',
     description: 'Inbound client-post connection with an optional shared API key.',
     fields: [
       {
@@ -128,6 +132,7 @@ export const CONNECTION_TYPES = [
     aliases: ['WooCommerce', 'Woo Commerce', 'woo_commerce'],
     authTypes: ['WooCommerce'],
     defaultAuthType: 'WooCommerce',
+    direction: 'outbound',
     description: 'WooCommerce REST API connection.',
     testable: true,
     fields: [
@@ -200,6 +205,7 @@ export const listConnectionTypes = () => CONNECTION_TYPES.map((connectionType) =
   aliases: connectionType.aliases || [],
   authTypes: connectionType.authTypes || [],
   defaultAuthType: connectionType.defaultAuthType || '',
+  direction: connectionType.direction || 'outbound',
   description: connectionType.description || '',
   testable: Boolean(connectionType.testable),
   fields: connectionType.fields,

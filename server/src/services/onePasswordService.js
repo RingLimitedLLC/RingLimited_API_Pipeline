@@ -458,6 +458,147 @@ export const deleteClientCredentials = async (client) => {
   return results;
 };
 
+// ─── Connection-keyed credential functions ─────────────────────────────────
+// These operate on a Connection entity (not a Client).
+
+const getConnectionCredentialItemId = (connection = {}) =>
+  connection.credential_item_id || connection.onepassword_item_id || connection.id || '';
+
+const getConnectionVaultId = (connection = {}) =>
+  connection.vault_id || connection.onepassword_vault_uuid || config.onePasswordVaultUuid || '';
+
+const buildConnectionItemTitle = (connection, connectionType) =>
+  `${connection.client_name || ''} / ${connection.campaign_name || ''} (${connectionType.label})`.trim();
+
+export const getConnectionCredentials = async (connection) => {
+  const connectionId = connection?.id;
+  const connectionType = resolveConnectionType({
+    connectionType: connection?.connection_type,
+    authType: connection?.auth_type,
+  });
+  const itemId = getConnectionCredentialItemId(connection) || connectionId;
+  const vaultId = getConnectionVaultId(connection);
+
+  if (!itemId) {
+    return { configured: false, message: 'No connection ID provided.', connectionType };
+  }
+
+  try {
+    const item = await fetchExistingItem(itemId, vaultId);
+    if (!item) {
+      return { configured: false, message: 'No credential item saved for this connection.', connectionId, itemId, connectionType };
+    }
+    const fields = extractItemFields(connectionType, item);
+    return {
+      configured: true,
+      source: isOnePasswordConnectConfigured() ? 'onepassword-connect' : 'local-json',
+      itemId: item.id || itemId,
+      connectionType,
+      fields,
+      fieldStatus: buildCredentialFieldStatus(connectionType, fields),
+    };
+  } catch (error) {
+    return { configured: false, message: error.message, connectionId, itemId, connectionType };
+  }
+};
+
+export const saveConnectionCredentials = async (connection, payload = {}) => {
+  const connectionType = resolveConnectionType({
+    connectionType: payload.connection_type || connection?.connection_type,
+    authType: payload.auth_type || connection?.auth_type,
+  });
+  const submittedFields = normalizeConnectionFields(connectionType, {
+    ...(payload.fields || {}),
+    ...payload,
+  });
+  const itemId = getConnectionCredentialItemId(connection);
+  const vaultId = getConnectionVaultId(connection);
+  const existingItem = await fetchExistingItem(itemId, vaultId).catch(() => null);
+  const existingFields = existingItem ? extractItemFields(connectionType, existingItem) : {};
+
+  requireConnectionFields({ connectionType, submittedFields, existingFields });
+
+  const clientProxy = {
+    id: connection.id,
+    client_name: buildConnectionItemTitle(connection, connectionType),
+  };
+
+  const savedItem = await saveItem({
+    client: clientProxy,
+    connectionType,
+    submittedFields,
+    existingItem,
+    itemId,
+    vaultId,
+  });
+  const savedFields = { ...existingFields, ...submittedFields };
+  return {
+    success: true,
+    source: isOnePasswordConnectConfigured() ? 'onepassword-connect' : 'local-json',
+    connectionType,
+    itemId: savedItem.id || itemId || connection.id,
+    vaultId: savedItem.vault?.id || vaultId || 'local-development',
+    fields: savedFields,
+    fieldStatus: buildCredentialFieldStatus(connectionType, savedFields),
+  };
+};
+
+export const buildConnectionCredentialMetadata = ({ connection, payload = {}, saveResult }) => {
+  const { connectionType, fields, fieldStatus, itemId, vaultId } = saveResult;
+  const metadata = {
+    connection_type: connectionType.id,
+    platform_label: connectionType.label,
+    credential_item_id: itemId,
+    vault_id: vaultId,
+    credential_field_status: JSON.stringify(fieldStatus),
+    connection_status: 'Connected',
+  };
+
+  for (const setting of connectionType.settings || []) {
+    const val = payload.settings?.[setting.key] ?? payload[setting.key] ?? connection[setting.key];
+    if (val !== undefined) metadata[setting.key] = val;
+    else if (connection[setting.key] === undefined && setting.defaultValue !== undefined) {
+      metadata[setting.key] = setting.defaultValue;
+    }
+  }
+
+  for (const field of connectionType.fields || []) {
+    if (!field.secret && fields[field.key] !== undefined) {
+      metadata[field.key] = fields[field.key];
+      if (field.mirrorToClient) metadata[field.mirrorToClient] = fields[field.key];
+    }
+  }
+
+  for (const secretFieldKey of getAllSecretFieldKeys()) {
+    metadata[secretFieldKey] = '';
+  }
+
+  return metadata;
+};
+
+export const deleteConnectionCredentials = async (connection) => {
+  const connectionId = typeof connection === 'string' ? connection : connection?.id;
+  const itemId = getConnectionCredentialItemId(typeof connection === 'string' ? {} : connection);
+  const vaultId = getConnectionVaultId(typeof connection === 'string' ? {} : connection);
+  const results = { onepassword: null };
+
+  if (itemId && isOnePasswordConnectConfigured()) {
+    try {
+      await onePasswordRequest(
+        `/v1/vaults/${encodeURIComponent(vaultId)}/items/${encodeURIComponent(itemId)}`,
+        { method: 'DELETE' },
+      );
+      results.onepassword = 'deleted';
+    } catch {
+      results.onepassword = 'skipped';
+    }
+  }
+
+  return results;
+};
+
+// ─── End Connection-keyed functions ───────────────────────────────────────
+
 export const getCredentialStatusForClient = (client = {}) => {
   const connectionType = resolveConnectionType({
     connectionType: client.connection_type,

@@ -2,21 +2,23 @@ import React, { useState } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import StepPlatform from "./StepPlatform";
 import StepClientInfo from "./StepClientInfo";
+import StepCredentials from "./StepCredentials";
 import StepSyncFrequency from "./StepSyncFrequency";
-import StepSharePoint from "./StepSharePoint";
 import StepReview from "./StepReview";
 
 const STEPS = [
   { id: 1, label: "Platform" },
-  { id: 2, label: "Details" },
-  { id: 3, label: "Schedule" },
-  { id: 4, label: "Delivery" },
+  { id: 2, label: "Client" },
+  { id: 3, label: "Credentials" },
+  { id: 4, label: "Schedule" },
   { id: 5, label: "Review" },
 ];
 
 const DEFAULT_FORM = {
   connection_type: null,
   client_name: "",
+  campaign_name: "",
+  notion_url: "",
   connection_type_fields: {},
   frequency_type: "daily",
   interval_value: 1,
@@ -92,7 +94,7 @@ export default function OnboardingWizard({ open, onOpenChange, onCreated }) {
             />
           )}
           {step === 3 && (
-            <StepSyncFrequency
+            <StepCredentials
               form={form}
               update={update}
               onNext={() => setStep(4)}
@@ -100,7 +102,7 @@ export default function OnboardingWizard({ open, onOpenChange, onCreated }) {
             />
           )}
           {step === 4 && (
-            <StepSharePoint
+            <StepSyncFrequency
               form={form}
               update={update}
               onNext={() => setStep(5)}
@@ -110,6 +112,7 @@ export default function OnboardingWizard({ open, onOpenChange, onCreated }) {
           {step === 5 && (
             <StepReview
               form={form}
+              update={update}
               onBack={() => setStep(4)}
               onFinished={handleFinished}
             />

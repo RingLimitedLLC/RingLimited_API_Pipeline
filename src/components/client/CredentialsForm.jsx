@@ -258,14 +258,17 @@ export default function CredentialsForm({ client, onUpdate }) {
     return true;
   };
 
+  const isConnection = Boolean(client?.campaign_name !== undefined && client?.direction);
+
   const handleSave = async () => {
     const submittedFields = getSubmittedFields();
     if (!validateRequiredFields(submittedFields)) return;
 
     setSaving(true);
     try {
+      const idField = isConnection ? { connection_id: client.id } : { client_id: client.id };
       const res = await base44.functions.invoke("saveConnectionCredentials", {
-        client_id: client.id,
+        ...idField,
         connection_type: activeType.id,
         crm_type: metadata.crm_type,
         auth_type: metadata.auth_type,
@@ -292,7 +295,8 @@ export default function CredentialsForm({ client, onUpdate }) {
   const handleTestConnection = async () => {
     setTesting(true);
     try {
-      const res = await base44.functions.invoke("testConnection", { client_id: client.id });
+      const idField = isConnection ? { connection_id: client.id } : { client_id: client.id };
+      const res = await base44.functions.invoke("testConnection", idField);
       if (res.data?.success) {
         toast.success(`Credential lookup succeeded (${res.data.source || "configured vault"})`);
       } else {
