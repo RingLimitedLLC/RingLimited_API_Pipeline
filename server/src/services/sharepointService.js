@@ -69,6 +69,48 @@ const getSiteId = async () => {
   return cachedSiteId;
 };
 
+// Debug helper: returns the available drives in the site plus the result of
+// searching for a filename. Lets us discover the correct path without guessing.
+export const debugSharePointPath = async (searchFileName) => {
+  const siteId = await getSiteId();
+  const token = await getAccessToken();
+
+  // List all drives on the site
+  const drivesData = await graphGet(`/sites/${siteId}/drives?$select=id,name,driveType,webUrl`);
+  const drives = (drivesData.value || []).map((d) => ({
+    id: d.id,
+    name: d.name,
+    driveType: d.driveType,
+    webUrl: d.webUrl,
+  }));
+
+  // Search for the file by name across the default drive
+  let searchResults = [];
+  try {
+    const q = encodeURIComponent(searchFileName);
+    const searchData = await graphGet(`/sites/${siteId}/drive/root/search(q='${q}')?$select=id,name,webUrl,parentReference&$top=10`);
+    searchResults = (searchData.value || []).map((item) => ({
+      name: item.name,
+      webUrl: item.webUrl,
+      parentPath: item.parentReference?.path ?? '',
+      driveId: item.parentReference?.driveId ?? '',
+    }));
+  } catch (err) {
+    searchResults = [{ error: err.message }];
+  }
+
+  // Also list root children of the default drive to see what's there
+  let rootItems = [];
+  try {
+    const rootData = await graphGet(`/sites/${siteId}/drive/root/children?$select=id,name,folder,webUrl&$top=50`);
+    rootItems = (rootData.value || []).map((i) => ({ name: i.name, isFolder: !!i.folder, webUrl: i.webUrl }));
+  } catch (err) {
+    rootItems = [{ error: err.message }];
+  }
+
+  return { siteId, drives, searchResults, rootItems };
+};
+
 export const readFileAsText = async (filePath) => {
   const siteId = await getSiteId();
   const token = await getAccessToken();

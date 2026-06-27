@@ -31,6 +31,7 @@ import {
 import {
   isSharePointConfigured,
   browseFolder,
+  debugSharePointPath,
 } from './services/sharepointService.js';
 import { getWorkspaceUsers } from './services/notionService.js';
 import { getClientsAndCampaignsFromSharePoint } from './services/clientCampaignCsvService.js';
@@ -302,6 +303,15 @@ app.post('/api/functions/:functionName', async (req, res) => {
       const { clients, campaigns } = await getClientsAndCampaignsFromSharePoint();
       await setCache(clients, campaigns);
       return res.json({ ok: true, clients: clients.length, campaigns: Object.keys(campaigns).length });
+    } catch (error) {
+      return res.status(502).json({ message: error.message });
+    }
+  }
+
+  if (functionName === 'debugSharePointCsv') {
+    try {
+      const result = await debugSharePointPath('Notion_Client_Campaign_Active_Index');
+      return res.json(result);
     } catch (error) {
       return res.status(502).json({ message: error.message });
     }
