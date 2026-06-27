@@ -200,6 +200,7 @@ app.post('/api/functions/:functionName', async (req, res) => {
         client: updatedClient,
       });
     } catch (error) {
+      console.error('[1Password] saveConnectionCredentials failed:', error.message);
       return res.status(400).json({ message: error.message });
     }
   }
