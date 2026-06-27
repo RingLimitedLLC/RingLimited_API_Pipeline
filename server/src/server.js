@@ -23,6 +23,10 @@ import {
   updateEntity,
   deleteEntity,
 } from './services/csvStore.js';
+import {
+  isSharePointConfigured,
+  browseFolder,
+} from './services/sharepointService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -71,6 +75,23 @@ app.get('/api/auth/is-authenticated', (req, res) => {
 
 app.get('/api/connection-types', (_req, res) => {
   res.json({ data: listConnectionTypes() });
+});
+
+app.get('/api/sharepoint/browse', async (req, res) => {
+  const user = getCurrentUser(req);
+  if (!user) return res.status(401).json({ message: 'Authentication required' });
+
+  if (!isSharePointConfigured()) {
+    return res.status(503).json({ message: 'SharePoint is not configured on this server.' });
+  }
+
+  const { itemId } = req.query;
+  try {
+    const result = await browseFolder(itemId || null);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 });
 
 app.get('/api/entities/:entityName', async (req, res) => {

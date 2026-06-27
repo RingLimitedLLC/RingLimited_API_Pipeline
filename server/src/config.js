@@ -28,4 +28,8 @@ export const config = {
   entraTenantId: process.env.ENTRA_TENANT_ID || '',
   entraClientId: process.env.ENTRA_CLIENT_ID || '',
   entraRequiredGroup: process.env.ENTRA_REQUIRED_GROUP || '',
+  sharepointTenantId: process.env.SHAREPOINT_TENANT_ID || '',
+  sharepointClientId: process.env.SHAREPOINT_CLIENT_ID || '',
+  sharepointClientSecret: process.env.SHAREPOINT_CLIENT_SECRET || '',
+  sharepointSiteUrl: process.env.SHAREPOINT_SITE_URL || '',
 };

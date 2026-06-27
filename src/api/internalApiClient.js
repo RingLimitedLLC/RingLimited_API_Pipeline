@@ -145,6 +145,11 @@ export const createInternalApiAdapter = () => ({
       }),
     }),
   },
+  sharepoint: {
+    browse: async (itemId = null) => requestJson('/api/sharepoint/browse', {
+      params: itemId ? { itemId } : {},
+    }),
+  },
   appLogs: {
     logUserInApp: async (pageName) => requestJson('/api/app-logs', {
       method: 'POST',

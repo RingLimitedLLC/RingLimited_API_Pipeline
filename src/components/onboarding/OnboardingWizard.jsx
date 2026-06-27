@@ -3,13 +3,15 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import StepPlatform from "./StepPlatform";
 import StepClientInfo from "./StepClientInfo";
 import StepSyncFrequency from "./StepSyncFrequency";
+import StepSharePoint from "./StepSharePoint";
 import StepReview from "./StepReview";
 
 const STEPS = [
   { id: 1, label: "Platform" },
   { id: 2, label: "Details" },
   { id: 3, label: "Schedule" },
-  { id: 4, label: "Review" },
+  { id: 4, label: "Delivery" },
+  { id: 5, label: "Review" },
 ];
 
 const DEFAULT_FORM = {
@@ -21,6 +23,7 @@ const DEFAULT_FORM = {
   interval_unit: "hours",
   scheduled_time: "08:00",
   scheduled_day: "1",
+  sharepoint_folder: null,
 };
 
 export default function OnboardingWizard({ open, onOpenChange, onCreated }) {
@@ -97,9 +100,17 @@ export default function OnboardingWizard({ open, onOpenChange, onCreated }) {
             />
           )}
           {step === 4 && (
+            <StepSharePoint
+              form={form}
+              update={update}
+              onNext={() => setStep(5)}
+              onBack={() => setStep(3)}
+            />
+          )}
+          {step === 5 && (
             <StepReview
               form={form}
-              onBack={() => setStep(3)}
+              onBack={() => setStep(4)}
               onFinished={handleFinished}
             />
           )}

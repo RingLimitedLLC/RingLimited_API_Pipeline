@@ -42,6 +42,8 @@ export default function StepReview({ form, onBack, onFinished }) {
         interval_unit: form.interval_unit,
         scheduled_time: form.scheduled_time,
         scheduled_day: form.scheduled_day,
+        sharepoint_folder_id: form.sharepoint_folder?.id || "",
+        sharepoint_folder_path: form.sharepoint_folder?.path || "",
       });
 
       const hasFields = allFields.some(
@@ -110,6 +112,16 @@ export default function StepReview({ form, onBack, onFinished }) {
         </div>
         <div className="px-4">
           <Row label="Frequency" value={freqLabel(form)} />
+        </div>
+
+        <div className="px-4 py-2 bg-slate-100">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">SharePoint Delivery</p>
+        </div>
+        <div className="px-4">
+          <Row
+            label="Destination folder"
+            value={form.sharepoint_folder?.path || form.sharepoint_folder?.name || "Not set (can configure later)"}
+          />
         </div>
       </div>
 
