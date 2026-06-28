@@ -125,6 +125,7 @@ export default function SyncJobsManager({ client }) {
       refetch();
     } finally {
       setRunningJobIds((prev) => { const next = new Set(prev); next.delete(job.id); return next; });
+      queryClient.invalidateQueries({ queryKey: ["syncLogs"] });
     }
   };
 

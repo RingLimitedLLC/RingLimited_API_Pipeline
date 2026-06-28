@@ -118,9 +118,17 @@ export const runSyncJob = async (syncJobId, connectionId) => {
     let rawRecords = [];
 
     if (connectionType === 'woocommerce') {
+      const GENERIC_CRM_TYPES = new Set(['leads', 'contacts', 'deals', 'companies', 'conversions']);
+      const rawType = (syncJob.object_type || 'orders').toLowerCase();
+      if (GENERIC_CRM_TYPES.has(rawType)) {
+        throw new Error(
+          `CRM Object "${syncJob.object_type}" is not a valid WooCommerce endpoint. ` +
+          `Edit this pipeline and select a WooCommerce object (Orders, Customers, Products, etc.) from the CRM Object dropdown.`,
+        );
+      }
       const endpoint = syncJob.object_type === 'Custom'
         ? (syncJob.custom_object_name || 'orders')
-        : (syncJob.object_type || 'orders').toLowerCase();
+        : rawType;
 
       rawRecords = await fetchWooCommerceData(
         { ...fields, woo_version: connection.woo_version || 'wc/v3' },
