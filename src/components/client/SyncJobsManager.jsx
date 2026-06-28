@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Database, Plus, Pencil, Trash2, ToggleLeft, ToggleRight, Play, AlertTriangle, Loader2 } from "lucide-react";
+import { Database, Plus, Pencil, Trash2, ToggleLeft, ToggleRight, Play, AlertTriangle, Loader2, XCircle } from "lucide-react";
 import moment from "moment";
 import SyncJobDialog from "@/components/client/SyncJobDialog";
 import CollapsibleCard from "@/components/ui/CollapsibleCard";
@@ -29,7 +29,7 @@ function scheduleLabel(job) {
     return count > 0 ? `Monthly — ${count} date${count !== 1 ? "s" : ""} selected` : "Monthly — no dates set";
   }
   if (job.frequency_type === "manual") return "Manual only";
-  return "—";
+  return null;
 }
 
 function formatTime(t) {
@@ -38,33 +38,6 @@ function formatTime(t) {
   const ampm = h < 12 ? "AM" : "PM";
   const hour = h % 12 === 0 ? 12 : h % 12;
   return `${hour}:${String(m).padStart(2,"0")} ${ampm}`;
-}
-
-/**
- * Returns true if a job is overdue (hasn't run within 2x its expected interval).
- * Only applies to enabled jobs that have run at least once.
- */
-function isOverdue(job) {
-  if (!job.is_enabled || !job.last_run_at || job.frequency_type === "manual") return false;
-  const lastRun = moment(job.last_run_at);
-  const now = moment();
-  let expectedIntervalMinutes = null;
-
-  if (job.frequency_type === "interval") {
-    if (job.interval_unit === "minutes") expectedIntervalMinutes = job.interval_value;
-    else if (job.interval_unit === "hours") expectedIntervalMinutes = job.interval_value * 60;
-    else if (job.interval_unit === "days") expectedIntervalMinutes = job.interval_value * 1440;
-  } else if (job.frequency_type === "daily") {
-    expectedIntervalMinutes = 1440;
-  } else if (job.frequency_type === "weekly" || job.frequency_type === "custom_days") {
-    expectedIntervalMinutes = 7 * 1440;
-  } else if (job.frequency_type === "monthly") {
-    expectedIntervalMinutes = 30 * 1440;
-  }
-
-  if (!expectedIntervalMinutes) return false;
-  const minutesSinceLastRun = now.diff(lastRun, "minutes");
-  return minutesSinceLastRun > expectedIntervalMinutes * 2;
 }
 
 export default function SyncJobsManager({ client }) {
@@ -78,18 +51,21 @@ export default function SyncJobsManager({ client }) {
     queryFn: () => base44.entities.SyncJobs.filter({ client_id: client.id }, "-created_date"),
   });
 
-  const refetch = () => queryClient.invalidateQueries({ queryKey: ["syncJobs", client.id] });
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["syncJobs", client.id] });
+    queryClient.invalidateQueries({ queryKey: ["syncLogs"] });
+  };
 
   const handleDelete = async (job) => {
     await base44.entities.SyncJobs.delete(job.id);
     toast.success("Data pipeline deleted");
-    refetch();
+    invalidate();
   };
 
   const handleToggle = async (job) => {
     await base44.entities.SyncJobs.update(job.id, { is_enabled: !job.is_enabled });
     toast.success(job.is_enabled ? "Job disabled" : "Job enabled");
-    refetch();
+    invalidate();
   };
 
   const handleEdit = (job) => {
@@ -105,7 +81,7 @@ export default function SyncJobsManager({ client }) {
   const handleSaved = () => {
     setDialogOpen(false);
     setEditingJob(null);
-    refetch();
+    invalidate();
   };
 
   const handleRunNow = async (job) => {
@@ -116,16 +92,25 @@ export default function SyncJobsManager({ client }) {
         sync_job_id: job.id,
         connection_id: client.id,
       });
-      const count = res.data?.records_processed ?? 0;
-      toast.success(`"${job.job_name}" complete — ${count} record${count !== 1 ? "s" : ""} written to SharePoint`);
-      refetch();
-      queryClient.invalidateQueries({ queryKey: ["syncLogs"] });
+      // Handle both axios-style { data: {...} } and direct response body
+      const data = res?.data ?? res;
+      if (data?.success === false) {
+        toast.error(`"${job.job_name}" failed: ${data.message || 'Unknown error — check Sync Logs for details'}`);
+      } else {
+        const count = data?.records_processed ?? 0;
+        const fetched = data?.records_fetched;
+        const filtered = data?.records_after_filter;
+        const detail = fetched != null && fetched !== count
+          ? ` (${fetched} fetched, ${filtered} after filters)`
+          : '';
+        toast.success(`"${job.job_name}" complete — ${count} record${count !== 1 ? "s" : ""} written to SharePoint${detail}`);
+      }
     } catch (err) {
       toast.error(`"${job.job_name}" failed: ${err.message}`);
-      refetch();
     } finally {
       setRunningJobIds((prev) => { const next = new Set(prev); next.delete(job.id); return next; });
-      queryClient.invalidateQueries({ queryKey: ["syncLogs"] });
+      // Always refresh so inline error message and last_run_status update
+      invalidate();
     }
   };
 
@@ -144,57 +129,68 @@ export default function SyncJobsManager({ client }) {
           ) : (
             <div className="space-y-3">
               {jobs.map(job => (
-                <div key={job.id} className={`flex items-center justify-between p-3 rounded-lg border ${job.is_enabled ? "bg-white border-slate-200" : "bg-slate-50 border-slate-200 opacity-60"}`}>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium text-slate-800">{job.job_name}</span>
-                      <Badge variant="outline" className="text-xs">{job.object_type === "Custom" ? job.custom_object_name || "Custom" : job.object_type}</Badge>
-                      <Badge className={`text-xs border-0 ${STATUS_COLORS[job.last_run_status] || STATUS_COLORS["Never Run"]}`}>
-                        {job.last_run_status || "Never Run"}
-                      </Badge>
-                      {isOverdue(job) && (
-                        <Badge className="text-xs border-0 bg-amber-100 text-amber-700 flex items-center gap-1">
-                          <AlertTriangle className="h-3 w-3" /> Overdue
+                <div
+                  key={job.id}
+                  className={`rounded-lg border ${job.is_enabled ? "bg-white border-slate-200" : "bg-slate-50 border-slate-200 opacity-60"} ${job.last_run_status === "Failed" ? "border-red-200" : ""}`}
+                >
+                  <div className="flex items-center justify-between p-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium text-slate-800">{job.job_name}</span>
+                        <Badge variant="outline" className="text-xs">
+                          {job.object_type === "Custom" ? (job.custom_object_name || "Custom") : job.object_type}
                         </Badge>
-                      )}
+                        <Badge className={`text-xs border-0 ${STATUS_COLORS[job.last_run_status] || STATUS_COLORS["Never Run"]}`}>
+                          {job.last_run_status || "Never Run"}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-slate-500 flex-wrap">
+                        {scheduleLabel(job) && <span>{scheduleLabel(job)}</span>}
+                        {job.selected_fields?.length > 0 && (
+                          <span>{job.selected_fields.length} field{job.selected_fields.length !== 1 ? "s" : ""} selected</span>
+                        )}
+                        {job.record_filters?.length > 0 && (
+                          <span>{job.record_filters.length} filter{job.record_filters.length !== 1 ? "s" : ""}</span>
+                        )}
+                        {job.last_run_at && (
+                          <span>Last run {moment(job.last_run_at).fromNow()}</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
-                      <span>{scheduleLabel(job)}</span>
-                      {job.selected_fields?.length > 0 && (
-                        <span>{job.selected_fields.length} field{job.selected_fields.length !== 1 ? "s" : ""}</span>
-                      )}
-                      {job.last_run_at && (
-                        <span className={isOverdue(job) ? "text-amber-600 font-medium" : ""}>
-                          Last run {moment(job.last_run_at).fromNow()}
-                        </span>
-                      )}
+                    <div className="flex items-center gap-1 ml-3 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => handleRunNow(job)}
+                        title={runningJobIds.has(job.id) ? "Running…" : "Run Now"}
+                        disabled={runningJobIds.has(job.id)}
+                      >
+                        {runningJobIds.has(job.id)
+                          ? <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />
+                          : <Play className="h-3.5 w-3.5 text-emerald-500" />}
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleToggle(job)} title={job.is_enabled ? "Disable" : "Enable"}>
+                        {job.is_enabled
+                          ? <ToggleRight className="h-4 w-4 text-indigo-500" />
+                          : <ToggleLeft className="h-4 w-4 text-slate-400" />}
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEdit(job)}>
+                        <Pencil className="h-3.5 w-3.5 text-slate-400" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(job)}>
+                        <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 ml-3">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => handleRunNow(job)}
-                      title={runningJobIds.has(job.id) ? "Running…" : "Run Now"}
-                      disabled={runningJobIds.has(job.id)}
-                    >
-                      {runningJobIds.has(job.id)
-                        ? <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />
-                        : <Play className="h-3.5 w-3.5 text-emerald-500" />}
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleToggle(job)} title={job.is_enabled ? "Disable" : "Enable"}>
-                      {job.is_enabled
-                        ? <ToggleRight className="h-4 w-4 text-indigo-500" />
-                        : <ToggleLeft className="h-4 w-4 text-slate-400" />}
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEdit(job)}>
-                      <Pencil className="h-3.5 w-3.5 text-slate-400" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(job)}>
-                      <Trash2 className="h-3.5 w-3.5 text-red-400" />
-                    </Button>
-                  </div>
+
+                  {/* Inline error panel — shown when last run failed */}
+                  {job.last_run_status === "Failed" && job.last_error_message && (
+                    <div className="mx-3 mb-3 flex items-start gap-2 rounded-md bg-red-50 border border-red-200 px-3 py-2">
+                      <XCircle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+                      <p className="text-xs text-red-700 font-mono break-all">{job.last_error_message}</p>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

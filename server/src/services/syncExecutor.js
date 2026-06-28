@@ -58,7 +58,6 @@ const applyRecordFilters = (records, filters) => {
 
 const applyFieldSelection = (records, selectedFields, fieldMappings) => {
   if (!selectedFields || !selectedFields.length) {
-    // No field selection — return records as-is (flattened one level)
     return records;
   }
   const mapLookup = Object.fromEntries(
@@ -90,31 +89,40 @@ const buildDateFilter = (syncJob) => {
   return {};
 };
 
+// Always returns a result object — never throws. Errors are in { success: false, message }.
+// This lets the HTTP handler always return 200 so the client doesn't depend on 4xx/5xx behaviour.
 export const runSyncJob = async (syncJobId, connectionId) => {
-  const syncJob = await getEntityById('SyncJobs', syncJobId);
-  if (!syncJob) throw new Error(`SyncJob ${syncJobId} not found`);
-
-  // SyncJob.client_id stores the connection ID (legacy naming from before refactor)
-  const effectiveConnectionId = connectionId || syncJob.client_id;
-  const connection = await getEntityById('Connections', effectiveConnectionId);
-  if (!connection) throw new Error(`Connection ${effectiveConnectionId} not found`);
-
-  const credentials = await getConnectionCredentials(connection);
-  if (!credentials.configured) {
-    throw new Error(`Credentials not configured for this connection: ${credentials.message}`);
-  }
-
-  const fields = credentials.fields;
-  const connectionType = credentials.connectionType?.id || connection.connection_type;
-  const dateFilter = buildDateFilter(syncJob);
   const startedAt = new Date().toISOString();
-
+  let syncJob = null;
+  let connection = null;
   let status = 'Failed';
   let errorMessage = '';
   let recordCount = 0;
   let result = null;
 
   try {
+    // ── Step 1: load entities ────────────────────────────────────────────────
+    console.log(`[SyncExecutor] Job ${syncJobId} starting`);
+    syncJob = await getEntityById('SyncJobs', syncJobId);
+    if (!syncJob) throw new Error(`SyncJob "${syncJobId}" not found in database`);
+
+    const effectiveConnectionId = connectionId || syncJob.client_id;
+    connection = await getEntityById('Connections', effectiveConnectionId);
+    if (!connection) throw new Error(`Connection "${effectiveConnectionId}" not found`);
+
+    // ── Step 2: credentials ──────────────────────────────────────────────────
+    console.log(`[SyncExecutor] Fetching credentials for connection ${connection.id}`);
+    const credentials = await getConnectionCredentials(connection);
+    if (!credentials.configured) {
+      throw new Error(`Credentials not configured for this connection: ${credentials.message}`);
+    }
+
+    const fields = credentials.fields;
+    const connectionType = credentials.connectionType?.id || connection.connection_type;
+    const dateFilter = buildDateFilter(syncJob);
+    console.log(`[SyncExecutor] type=${connectionType} dateFilter=${JSON.stringify(dateFilter)}`);
+
+    // ── Step 3: fetch data ───────────────────────────────────────────────────
     let rawRecords = [];
 
     if (connectionType === 'woocommerce') {
@@ -130,6 +138,7 @@ export const runSyncJob = async (syncJobId, connectionId) => {
         ? (syncJob.custom_object_name || 'orders')
         : rawType;
 
+      console.log(`[SyncExecutor] Fetching WooCommerce /${endpoint}...`);
       rawRecords = await fetchWooCommerceData(
         { ...fields, woo_version: connection.woo_version || 'wc/v3' },
         endpoint,
@@ -141,24 +150,47 @@ export const runSyncJob = async (syncJobId, connectionId) => {
       throw new Error(`Connection type "${connectionType}" does not support outbound data pull`);
     }
 
-    // Apply record-level filters, then field selection/mapping
+    console.log(`[SyncExecutor] Fetched ${rawRecords.length} raw records`);
+
+    // ── Step 4: filter + select fields ───────────────────────────────────────
     const filteredRecords = applyRecordFilters(rawRecords, syncJob.record_filters);
+    console.log(`[SyncExecutor] After record filters: ${filteredRecords.length} records`);
+
     const processed = applyFieldSelection(filteredRecords, syncJob.selected_fields, syncJob.field_mappings);
+    recordCount = processed.length;
     const csvContent = toCsv(processed);
 
-    const folderPath = connection.sharepoint_folder_path || '';
-    const folderItemId = connection.sharepoint_folder_id || '';
-    // Filename generated at run time so the date always reflects when the job ran
+    // ── Step 5: build filename ────────────────────────────────────────────────
+    // Look up the Client entity so we get the real name (Connection doesn't mirror it)
+    const clientEntity = connection.client_id
+      ? await getEntityById('Clients', connection.client_id).catch(() => null)
+      : null;
+    const clientName = clientEntity?.client_name || connection.client_name || 'Client';
+
     const typePrefix = syncJob.job_type === 'Target' ? 'T' : syncJob.job_type === 'Suppression' ? 'S' : 'C';
     const runDate = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const filename = `${typePrefix}_X_${connection.client_name || 'Client'}_${runDate}_${syncJob.job_name || 'job'}.csv`;
+    const filename = `${typePrefix}_X_${clientName}_${runDate}_${syncJob.job_name || 'job'}.csv`;
 
+    // ── Step 6: write to SharePoint ──────────────────────────────────────────
+    const folderPath = connection.sharepoint_folder_path || '';
+    const folderItemId = connection.sharepoint_folder_id || '';
+
+    if (!folderItemId && !folderPath) {
+      throw new Error(
+        'No SharePoint output folder configured on this connection. ' +
+        'Edit the connection and select a destination folder in the SharePoint settings.',
+      );
+    }
+
+    console.log(`[SyncExecutor] Writing ${recordCount} records → ${filename} (folder: ${folderPath || '(item id)'})`);
     const writeResult = await writeFileToFolder(folderItemId, folderPath, filename, csvContent);
+    console.log(`[SyncExecutor] SharePoint write OK: ${writeResult.webUrl}`);
 
-    recordCount = processed.length;
     status = 'Success';
     result = {
       success: true,
+      records_fetched: rawRecords.length,
+      records_after_filter: filteredRecords.length,
       records_processed: recordCount,
       filename,
       folder: folderPath,
@@ -167,38 +199,42 @@ export const runSyncJob = async (syncJobId, connectionId) => {
   } catch (err) {
     errorMessage = err.message;
     status = 'Failed';
+    console.error(`[SyncExecutor] FAILED: ${err.message}`);
   }
 
+  // ── Write SyncLog (best-effort; needs both entities loaded) ─────────────────
   const finishedAt = new Date().toISOString();
 
-  // Write sync log (best-effort — don't let log failure mask the sync error)
-  createEntity('SyncLogs', {
-    client_id: connection.client_id,
-    connection_id: connection.id,
-    sync_job_id: syncJob.id,
-    job_name: syncJob.job_name,
-    sync_type: 'Manual',
-    status,
-    records_processed: recordCount,
-    error_message: errorMessage,
-    started_at: startedAt,
-    finished_at: finishedAt,
-  }).catch((e) => console.error('[SyncExecutor] Failed to write SyncLog:', e.message));
+  if (syncJob && connection) {
+    createEntity('SyncLogs', {
+      client_id: connection.client_id,
+      connection_id: connection.id,
+      sync_job_id: syncJob.id,
+      job_name: syncJob.job_name,
+      sync_type: 'Manual',
+      status,
+      records_processed: recordCount,
+      error_message: errorMessage,
+      started_at: startedAt,
+      finished_at: finishedAt,
+    }).catch((e) => console.error('[SyncExecutor] Failed to write SyncLog:', e.message));
 
-  updateEntity('SyncJobs', syncJobId, {
-    last_run_at: finishedAt,
-    last_run_status: status,
-  }).catch((e) => console.error('[SyncExecutor] Failed to update SyncJob:', e.message));
+    updateEntity('SyncJobs', syncJobId, {
+      last_run_at: finishedAt,
+      last_run_status: status,
+      last_error_message: status === 'Failed' ? errorMessage : '',
+    }).catch((e) => console.error('[SyncExecutor] Failed to update SyncJob:', e.message));
 
-  if (status === 'Success') {
-    updateEntity('Connections', connection.id, {
-      last_sync_at: finishedAt,
-      connection_status: 'Connected',
-    }).catch((e) => console.error('[SyncExecutor] Failed to update Connection:', e.message));
+    if (status === 'Success') {
+      updateEntity('Connections', connection.id, {
+        last_sync_at: finishedAt,
+        connection_status: 'Connected',
+      }).catch((e) => console.error('[SyncExecutor] Failed to update Connection:', e.message));
+    }
   }
 
   if (status === 'Failed') {
-    throw new Error(errorMessage);
+    return { success: false, message: errorMessage };
   }
 
   return result;

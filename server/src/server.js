@@ -332,13 +332,10 @@ app.post('/api/functions/:functionName', async (req, res) => {
   if (functionName === 'runSyncJob') {
     const syncJobId = req.body?.sync_job_id;
     const connectionId = req.body?.connection_id;
-    if (!syncJobId) return res.status(400).json({ message: 'sync_job_id is required' });
-    try {
-      const result = await executeSyncJob(syncJobId, connectionId);
-      return res.json(result);
-    } catch (err) {
-      return res.status(502).json({ message: err.message });
-    }
+    if (!syncJobId) return res.json({ success: false, message: 'sync_job_id is required' });
+    // executeSyncJob never throws — always returns { success: true, ... } or { success: false, message }
+    const result = await executeSyncJob(syncJobId, connectionId).catch((err) => ({ success: false, message: err.message }));
+    return res.json(result);
   }
 
   if (functionName === 'getNotionUsers') {
