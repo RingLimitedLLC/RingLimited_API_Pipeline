@@ -3,32 +3,7 @@ import { getConnectionCredentials } from './onePasswordService.js';
 import { fetchWooCommerceData } from './wooCommerceService.js';
 import { fetchGenericApiData } from './genericApiService.js';
 import { writeFileToFolder } from './sharepointService.js';
-
-// Resolve a dot-notation path against a nested object (e.g. "billing.first_name").
-// When an array is encountered mid-path the remaining path is mapped over every
-// element and the results are joined with "; " — matching the flattenRecord logic
-// used in the field browser.  "line_items.name" → "Product A; Product B".
-const getNestedValue = (obj, path) => {
-  const parts = String(path).split('.');
-  let cur = obj;
-  for (let i = 0; i < parts.length; i++) {
-    if (cur == null) return '';
-    if (Array.isArray(cur)) {
-      const remaining = parts.slice(i).join('.');
-      const values = cur
-        .map((item) => {
-          const v = getNestedValue(item, remaining);
-          return (v !== null && v !== undefined && v !== '') ? String(v) : null;
-        })
-        .filter((v) => v !== null);
-      return values.join('; ');
-    }
-    if (typeof cur !== 'object') return '';
-    cur = cur[parts[i]];
-  }
-  if (cur !== null && typeof cur === 'object') return JSON.stringify(cur);
-  return cur ?? '';
-};
+import { getNestedValue } from '../utils/recordFlattener.js';
 
 const csvEscape = (value) => {
   // Arrays and objects must be serialized before escaping, otherwise

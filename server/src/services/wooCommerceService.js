@@ -1,72 +1,11 @@
+import { flattenKeys, flattenRecord } from '../utils/recordFlattener.js';
+
 const buildAuth = (consumerKey, consumerSecret) =>
   `Basic ${Buffer.from(`${consumerKey}:${consumerSecret}`).toString('base64')}`;
 
 const buildBaseUrl = (storeUrl, version = 'wc/v3') =>
   `${String(storeUrl).replace(/\/$/, '')}/wp-json/${version}`;
 
-// Flatten a nested object into dot-notation keys (e.g. billing.first_name).
-// Arrays of objects are unrolled: each sub-key becomes parent.subKey.
-// Arrays of primitives stay as a single leaf key.
-const flattenKeys = (obj, prefix = '', depth = 0) => {
-  if (depth > 4) return prefix ? [prefix] : [];
-  const keys = [];
-  for (const [k, v] of Object.entries(obj || {})) {
-    const fullKey = prefix ? `${prefix}.${k}` : k;
-    if (v !== null && v !== undefined && typeof v === 'object' && !Array.isArray(v)) {
-      // Plain nested object — recurse
-      keys.push(...flattenKeys(v, fullKey, depth + 1));
-    } else if (Array.isArray(v) && v.length > 0 && v[0] !== null && typeof v[0] === 'object') {
-      // Array of objects — merge all element shapes so every sub-key is discovered,
-      // then recurse into the merged shape to produce parent.subKey columns.
-      const merged = v.reduce((acc, item) => {
-        if (item && typeof item === 'object') Object.assign(acc, item);
-        return acc;
-      }, {});
-      keys.push(...flattenKeys(merged, fullKey, depth + 1));
-    } else {
-      // Primitive, empty array, or array of primitives — single leaf
-      keys.push(fullKey);
-    }
-  }
-  return keys;
-};
-
-// Flatten a nested object into a single-level object keyed by dot-notation paths.
-// Arrays of objects are unrolled: values from all elements are joined with "; ".
-const flattenRecord = (obj, prefix = '', depth = 0) => {
-  if (depth > 4) return prefix ? { [prefix]: typeof obj === 'object' ? '[nested]' : obj } : {};
-  const result = {};
-  for (const [k, v] of Object.entries(obj || {})) {
-    const fullKey = prefix ? `${prefix}.${k}` : k;
-    if (v !== null && v !== undefined && typeof v === 'object' && !Array.isArray(v)) {
-      // Plain nested object — recurse
-      Object.assign(result, flattenRecord(v, fullKey, depth + 1));
-    } else if (Array.isArray(v) && v.length > 0 && v[0] !== null && typeof v[0] === 'object') {
-      // Array of objects — collect every sub-key from every element; join values with "; "
-      const subKeys = [...new Set(v.flatMap((item) =>
-        (item && typeof item === 'object' ? Object.keys(item) : []),
-      ))];
-      for (const subK of subKeys) {
-        const subFullKey = `${fullKey}.${subK}`;
-        const subValues = v
-          .map((item) => {
-            const val = item?.[subK];
-            if (val === null || val === undefined) return null;
-            if (typeof val === 'object') return JSON.stringify(val);
-            return String(val);
-          })
-          .filter((s) => s !== null && s !== '');
-        result[subFullKey] = subValues.join('; ');
-      }
-    } else {
-      // Primitive or array of primitives
-      result[fullKey] = Array.isArray(v)
-        ? v.map((i) => (typeof i === 'object' && i !== null ? JSON.stringify(i) : String(i ?? ''))).join('; ')
-        : v;
-    }
-  }
-  return result;
-};
 
 export const testWooCommerceConnection = async ({ woo_login_url, woo_consumer_key, woo_consumer_secret, woo_version = 'wc/v3' }) => {
   const baseUrl = buildBaseUrl(woo_login_url, woo_version);
@@ -143,7 +82,10 @@ export const fetchWooCommerceSchema = async (
 
   const fields = flattenKeys(data[0]);
   const flat_records = data.map((record) => flattenRecord(record));
-  return { fields, flat_records, message: `Schema derived from ${data.length} live ${endpoint} records` };
+  const array_source_fields = Object.entries(data[0] || {})
+    .filter(([, v]) => Array.isArray(v))
+    .map(([k]) => k);
+  return { fields, flat_records, array_source_fields, message: `Schema derived from ${data.length} live ${endpoint} records` };
 };
 
 export const fetchWooCommerceData = async (

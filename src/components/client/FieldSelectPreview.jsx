@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
  * Ctrl+click to multi-select. Each selected header gets a toggle indicator.
  * Confirm returns the chosen fields to the parent.
  */
-export default function FieldSelectPreview({ open, onClose, onConfirm, client, objectType, initialSelected = [], dateFilter = {} }) {
+export default function FieldSelectPreview({ open, onClose, onConfirm, client, objectType, initialSelected = [], dateFilter = {}, apiConfig = {} }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [records, setRecords] = useState([]);
@@ -24,28 +24,50 @@ export default function FieldSelectPreview({ open, onClose, onConfirm, client, o
   const [copied, setCopied] = useState(false);
 
   const fetchData = async () => {
-    const wooPage = (!objectType || objectType === "Custom")
-      ? null
-      : objectType === "Orders" ? "orders" : objectType.toLowerCase();
+    const connectionType = client?.connection_type || client?.crm_type;
+    const isWoo = connectionType === "woocommerce" || connectionType === "WooCommerce";
+    const isGeneric = connectionType === "generic_api_key" || connectionType === "generic_oauth2";
 
-    if (!wooPage) {
-      setError('Select a specific CRM object type before browsing live data.');
+    let params;
+    if (isWoo) {
+      const wooPage = (!objectType || objectType === "Custom")
+        ? null
+        : objectType === "Orders" ? "orders" : objectType.toLowerCase();
+      if (!wooPage) {
+        setError('Select a specific CRM object type before browsing live data.');
+        return;
+      }
+      params = {
+        connection_id: client.id,
+        woo_page: wooPage,
+        date_filter_type: dateFilter.date_filter_type,
+        date_filter_field: dateFilter.date_filter_field,
+        date_filter_relative_days: dateFilter.date_filter_relative_days,
+        date_filter_start: dateFilter.date_filter_start,
+        date_filter_end: dateFilter.date_filter_end,
+      };
+    } else if (isGeneric) {
+      if (!apiConfig?.api_endpoint) {
+        setError('Set an API endpoint in the pipeline API Configuration section before browsing fields.');
+        return;
+      }
+      params = {
+        connection_id: client.id,
+        api_endpoint: apiConfig.api_endpoint,
+        api_method: apiConfig.api_method,
+        api_auth_type: apiConfig.api_auth_type,
+        api_auth_header_name: apiConfig.api_auth_header_name,
+        api_request_body: apiConfig.api_request_body,
+      };
+    } else {
+      setError('Field browsing is not supported for this connection type.');
       return;
     }
 
     setLoading(true);
     setError(null);
     try {
-      const res = await base44.functions.invoke("fetchWooCommerceSchema", {
-        client_id: client.id,
-        woo_page: wooPage,
-        include_sample: true,
-        date_filter_type: dateFilter.date_filter_type,
-        date_filter_field: dateFilter.date_filter_field,
-        date_filter_relative_days: dateFilter.date_filter_relative_days,
-        date_filter_start: dateFilter.date_filter_start,
-        date_filter_end: dateFilter.date_filter_end,
-      });
+      const res = await base44.functions.invoke("fetchSchema", params);
       const fields = res.data?.fields || [];
       const sample = res.data?.flat_records?.length > 0
         ? res.data.flat_records

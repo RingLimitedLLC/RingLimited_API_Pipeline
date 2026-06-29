@@ -41,6 +41,8 @@ import {
   fetchWooCommerceObjects,
   fetchWooCommerceSchema,
 } from './services/wooCommerceService.js';
+import { fetchGenericApiData } from './services/genericApiService.js';
+import { flattenKeys, flattenRecord } from './utils/recordFlattener.js';
 import { runSyncJob as executeSyncJob } from './services/syncExecutor.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -324,6 +326,71 @@ app.post('/api/functions/:functionName', async (req, res) => {
         { includeSample, dateAfter, dateBefore },
       );
       return res.json(schema);
+    } catch (err) {
+      return res.status(502).json({ message: err.message });
+    }
+  }
+
+  // Unified schema fetch — routes by connection type.
+  // Returns { fields, flat_records, array_source_fields } for any outbound connector.
+  if (functionName === 'fetchSchema') {
+    const connectionId = req.body?.connection_id || req.body?.client_id;
+    let dateAfter, dateBefore;
+    const dfType = req.body?.date_filter_type;
+    if (dfType === 'relative') {
+      const days = Number(req.body?.date_filter_relative_days) || 30;
+      dateAfter = new Date(Date.now() - days * 86_400_000).toISOString();
+    } else if (dfType === 'absolute') {
+      if (req.body?.date_filter_start) dateAfter = new Date(req.body.date_filter_start).toISOString();
+      if (req.body?.date_filter_end) dateBefore = new Date(req.body.date_filter_end).toISOString();
+    }
+    try {
+      const connection = connectionId ? await getEntityById('Connections', connectionId) : null;
+      if (!connection) return res.status(404).json({ message: 'Connection not found' });
+      const credentials = await getConnectionCredentials(connection);
+      if (!credentials.configured) return res.status(400).json({ message: `Credentials not configured: ${credentials.message}` });
+      const connectionType = credentials.connectionType?.id || connection.connection_type;
+
+      if (connectionType === 'woocommerce') {
+        // Delegate to existing WooCommerce schema fetcher (already uses shared flattener)
+        const endpoint = req.body?.woo_page || 'orders';
+        const schema = await fetchWooCommerceSchema(
+          { ...credentials.fields, woo_version: connection.woo_version || 'wc/v3' },
+          endpoint,
+          { includeSample: true, dateAfter, dateBefore },
+        );
+        return res.json(schema);
+      }
+
+      if (connectionType === 'generic_api_key' || connectionType === 'generic_oauth2') {
+        const endpoint = req.body?.api_endpoint || credentials.fields?.api_base_url;
+        if (!endpoint) {
+          return res.json({ fields: [], flat_records: [], array_source_fields: [], message: 'No API endpoint configured. Set one in the pipeline API Configuration section.' });
+        }
+        const syncJobLike = {
+          api_endpoint: endpoint,
+          api_auth_type: req.body?.api_auth_type || 'Bearer Token',
+          api_auth_header_name: req.body?.api_auth_header_name || '',
+          api_method: req.body?.api_method || 'GET',
+          api_request_body: req.body?.api_request_body || '',
+        };
+        const rawRecords = await fetchGenericApiData(credentials.fields, syncJobLike);
+        if (!rawRecords.length) {
+          return res.json({ fields: [], flat_records: [], array_source_fields: [], message: 'No records returned from API' });
+        }
+        const sampleRecords = rawRecords.slice(0, 10);
+        const fields = flattenKeys(rawRecords[0]);
+        const flat_records = sampleRecords.map((r) => flattenRecord(r));
+        const array_source_fields = Object.entries(rawRecords[0] || {})
+          .filter(([, v]) => Array.isArray(v))
+          .map(([k]) => k);
+        return res.json({
+          fields, flat_records, array_source_fields,
+          message: `Schema derived from ${sampleRecords.length} live records`,
+        });
+      }
+
+      return res.json({ fields: [], flat_records: [], array_source_fields: [], message: `Field browsing is not supported for connection type "${connectionType}"` });
     } catch (err) {
       return res.status(502).json({ message: err.message });
     }

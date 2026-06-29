@@ -90,13 +90,35 @@ export default function SyncJobDialog({ open, onClose, onSaved, client, job }) {
   const [fetchingObjects, setFetchingObjects] = useState(false);
 
   const isWooClient = client?.connection_type === "woocommerce" || client?.crm_type === "WooCommerce";
+  const isGenericClient = client?.connection_type === "generic_api_key" || client?.connection_type === "generic_oauth2";
+  const canBrowseFields = isWooClient
+    ? Boolean(form.object_type && form.object_type !== "Custom")
+    : isGenericClient
+      ? Boolean(form.api_endpoint)
+      : false;
 
   const handleFetchLiveFields = async () => {
     setFetchingSchema(true);
     try {
-      // object_type is now the raw WooCommerce path (e.g. "orders", "products/categories")
-      const wooPage = form.object_type;
-      const res = await base44.functions.invoke("fetchWooCommerceSchema", { client_id: client.id, woo_page: wooPage });
+      const params = isWooClient
+        ? {
+            connection_id: client.id,
+            woo_page: form.object_type,
+            date_filter_type: form.date_filter_type,
+            date_filter_field: form.date_filter_field,
+            date_filter_relative_days: form.date_filter_relative_days,
+            date_filter_start: form.date_filter_start,
+            date_filter_end: form.date_filter_end,
+          }
+        : {
+            connection_id: client.id,
+            api_endpoint: form.api_endpoint,
+            api_method: form.api_method,
+            api_auth_type: form.api_auth_type,
+            api_auth_header_name: form.api_auth_header_name,
+            api_request_body: form.api_request_body,
+          };
+      const res = await base44.functions.invoke("fetchSchema", params);
       const fields = res.data?.fields || [];
       if (fields.length === 0) {
         toast.warning(res.data?.message || "No fields returned from live API");
@@ -104,7 +126,7 @@ export default function SyncJobDialog({ open, onClose, onSaved, client, job }) {
         setLiveFields(fields);
         setLiveExpandedFields(new Set(res.data?.expanded_fields || []));
         setLiveArraySources(res.data?.array_source_fields || []);
-        toast.success(`Fetched ${fields.length} fields from live WooCommerce ${form.object_type} API`);
+        toast.success(`Fetched ${fields.length} fields from live API`);
       }
     } catch (err) {
       toast.error(`Failed to fetch schema: ${err.message}`);
@@ -323,7 +345,7 @@ export default function SyncJobDialog({ open, onClose, onSaved, client, job }) {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-xs font-medium text-slate-500">Fields to Pull</Label>
-              {isWooClient && form.object_type && form.object_type !== "Custom" && (
+              {canBrowseFields && (
                 <div className="flex items-center gap-1.5">
                   <Button
                     type="button"
@@ -353,7 +375,7 @@ export default function SyncJobDialog({ open, onClose, onSaved, client, job }) {
             </div>
             {liveFields.length > 0 && (
               <p className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-200 rounded px-2 py-1">
-                {liveFields.length} fields loaded from live WooCommerce API — click to select
+                {liveFields.length} fields loaded from live API — click to select
                 {liveArraySources.length > 0 && (
                   <span className="block mt-0.5 text-emerald-500">
                     Array fields expanded: <span className="italic">{liveArraySources.join(", ")}</span>
@@ -900,6 +922,13 @@ export default function SyncJobDialog({ open, onClose, onSaved, client, job }) {
         date_filter_relative_days: form.date_filter_relative_days,
         date_filter_start: form.date_filter_start,
         date_filter_end: form.date_filter_end,
+      }}
+      apiConfig={{
+        api_endpoint: form.api_endpoint,
+        api_method: form.api_method,
+        api_auth_type: form.api_auth_type,
+        api_auth_header_name: form.api_auth_header_name,
+        api_request_body: form.api_request_body,
       }}
     />
     </>
