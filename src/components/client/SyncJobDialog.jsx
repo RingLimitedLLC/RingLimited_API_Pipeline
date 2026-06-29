@@ -6,11 +6,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { X, Loader2, ChevronDown, ChevronUp, RefreshCw, Eye, Plus } from "lucide-react";
+import { X, Loader2, ChevronDown, ChevronUp, RefreshCw, Eye, Plus, FolderOpen, Download } from "lucide-react";
 import FieldMappingSection from "@/components/client/FieldMappingSection";
 import { Textarea } from "@/components/ui/textarea";
 import ApiDataPreview from "@/components/client/ApiDataPreview";
 import FieldSelectPreview from "@/components/client/FieldSelectPreview";
+import SharePointFolderPicker from "@/components/client/SharePointFolderPicker";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -54,6 +55,10 @@ const DEFAULTS = {
   interval_unit: "hours",
   scheduled_time: "08:00",
   scheduled_day: "1",
+  output_sharepoint: true,
+  output_local: false,
+  sharepoint_folder_id: "",
+  sharepoint_folder_path: "",
   date_filter_type: "none",
   date_filter_field: "",
   date_filter_relative_days: 30,
@@ -189,6 +194,10 @@ export default function SyncJobDialog({ open, onClose, onSaved, client, job }) {
 
   const handleSave = async () => {
     if (!form.job_name.trim()) { toast.error("Pipeline name is required"); return; }
+    if (!form.output_sharepoint && !form.output_local) {
+      toast.error("Select at least one output destination");
+      return;
+    }
     setSaving(true);
     const payload = {
       client_id: client.id,
@@ -206,6 +215,10 @@ export default function SyncJobDialog({ open, onClose, onSaved, client, job }) {
       interval_unit: form.frequency_type === "interval" ? form.interval_unit : null,
       scheduled_time: (form.frequency_type === "daily" || form.frequency_type === "weekly") ? form.scheduled_time : null,
       scheduled_day: form.frequency_type === "weekly" ? form.scheduled_day : null,
+      output_sharepoint: form.output_sharepoint,
+      output_local: form.output_local,
+      sharepoint_folder_id: form.output_sharepoint ? (form.sharepoint_folder_id || "") : "",
+      sharepoint_folder_path: form.output_sharepoint ? (form.sharepoint_folder_path || "") : "",
       api_endpoint: form.api_endpoint,
       api_method: form.api_method,
       api_auth_type: form.api_auth_type,
@@ -678,6 +691,77 @@ export default function SyncJobDialog({ open, onClose, onSaved, client, job }) {
                 </div>
               );
             })()}
+          </div>
+
+          {/* Output Destinations */}
+          <div className="border rounded-lg overflow-hidden">
+            <div className="px-4 py-3 bg-slate-50 border-b">
+              <Label className="text-xs font-medium text-slate-700">Output Destinations</Label>
+              <p className="text-xs text-slate-400 mt-0.5">Where should extracted data be delivered? Select one or both.</p>
+            </div>
+            <div className="p-4 space-y-4">
+
+              {/* SharePoint */}
+              <div className="space-y-3">
+                <label className="flex items-center gap-3 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={form.output_sharepoint}
+                    onChange={e => set("output_sharepoint", e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 accent-indigo-600"
+                  />
+                  <div className="flex items-center gap-2">
+                    <FolderOpen className="h-4 w-4 text-slate-400" />
+                    <span className="text-sm font-medium text-slate-700">SharePoint</span>
+                    <span className="text-xs text-slate-400">— write CSV to a SharePoint folder</span>
+                  </div>
+                </label>
+                {form.output_sharepoint && (
+                  <div className="ml-7">
+                    <SharePointFolderPicker
+                      value={
+                        form.sharepoint_folder_id
+                          ? { id: form.sharepoint_folder_id, path: form.sharepoint_folder_path }
+                          : null
+                      }
+                      onChange={(folder) => setForm(f => ({
+                        ...f,
+                        sharepoint_folder_id: folder?.id || "",
+                        sharepoint_folder_path: folder?.path || folder?.name || "",
+                      }))}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Local Download */}
+              <div className="space-y-2">
+                <label className="flex items-center gap-3 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={form.output_local}
+                    onChange={e => set("output_local", e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 accent-indigo-600"
+                  />
+                  <div className="flex items-center gap-2">
+                    <Download className="h-4 w-4 text-slate-400" />
+                    <span className="text-sm font-medium text-slate-700">Local Download</span>
+                    <span className="text-xs text-slate-400">— download CSV to your browser</span>
+                  </div>
+                </label>
+                {form.output_local && (
+                  <p className="ml-7 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-md px-3 py-2">
+                    When you click <strong>Run Now</strong>, a CSV file will be downloaded directly to your browser's Downloads folder.
+                  </p>
+                )}
+              </div>
+
+              {!form.output_sharepoint && !form.output_local && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                  At least one output destination is required.
+                </p>
+              )}
+            </div>
           </div>
 
           {/* API Config — for generic API connections only (WooCommerce handles auth via credentials) */}

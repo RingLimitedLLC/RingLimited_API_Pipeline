@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ChevronUp, ArrowUpRight, ArrowDownToLine, Plug, Key, ShieldCheck, Webhook, Send, ShoppingCart, Trash2, Loader2, FolderOpen, Pencil } from "lucide-react";
+import { ChevronDown, ChevronUp, ArrowUpRight, ArrowDownToLine, Plug, Key, ShieldCheck, Webhook, Send, ShoppingCart, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import ConnectionActions from "./ConnectionActions";
 import CredentialsForm from "./CredentialsForm";
@@ -13,7 +13,6 @@ import EventsTable from "./EventsTable";
 import SharePointDeliveryTable from "./SharePointDeliveryTable";
 import InboundReceiptsLog from "./InboundReceiptsLog";
 import InboundPushManager from "./InboundPushManager";
-import SharePointFolderPicker from "./SharePointFolderPicker";
 
 const PLATFORM_ICONS = {
   woocommerce: ShoppingCart,
@@ -32,77 +31,6 @@ function sanitizeConnection(conn) {
   return safe;
 }
 
-function SharePointFolderSection({ connection, onUpdate }) {
-  const [editing, setEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [pendingFolder, setPendingFolder] = useState(null);
-
-  const currentPath = connection.sharepoint_folder_path || connection.sharepoint_folder_id;
-
-  const handleSave = async () => {
-    if (!pendingFolder) return;
-    setSaving(true);
-    try {
-      await base44.entities.Connections.update(connection.id, {
-        sharepoint_folder_id: pendingFolder.id,
-        sharepoint_folder_path: pendingFolder.path || pendingFolder.name,
-      });
-      toast.success("Output folder saved");
-      setEditing(false);
-      setPendingFolder(null);
-      onUpdate?.();
-    } catch (err) {
-      toast.error(`Failed to save folder: ${err.message}`);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <FolderOpen className="h-4 w-4 text-slate-400" />
-          <span className="text-xs font-medium text-slate-600">SharePoint Output Folder</span>
-        </div>
-        {!editing && (
-          <Button variant="ghost" size="sm" className="h-6 text-xs gap-1 text-slate-500" onClick={() => setEditing(true)}>
-            <Pencil className="h-3 w-3" /> {currentPath ? "Change" : "Set folder"}
-          </Button>
-        )}
-      </div>
-
-      {!editing && (
-        <div className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs ${currentPath ? "bg-emerald-50 border border-emerald-200 text-emerald-800" : "bg-amber-50 border border-amber-200 text-amber-700"}`}>
-          <FolderOpen className={`h-3.5 w-3.5 shrink-0 ${currentPath ? "text-emerald-500" : "text-amber-500"}`} />
-          {currentPath ? (
-            <span className="font-mono truncate">{currentPath}</span>
-          ) : (
-            <span>No folder set — pipelines cannot write files until a folder is selected.</span>
-          )}
-        </div>
-      )}
-
-      {editing && (
-        <div className="border border-slate-200 rounded-lg p-3 space-y-3 bg-slate-50">
-          <SharePointFolderPicker
-            value={pendingFolder || (connection.sharepoint_folder_id ? { id: connection.sharepoint_folder_id, path: connection.sharepoint_folder_path } : null)}
-            onChange={setPendingFolder}
-          />
-          <div className="flex gap-2 justify-end">
-            <Button variant="outline" size="sm" onClick={() => { setEditing(false); setPendingFolder(null); }} disabled={saving}>
-              Cancel
-            </Button>
-            <Button size="sm" onClick={handleSave} disabled={!pendingFolder || saving} className="bg-indigo-600 hover:bg-indigo-700 text-white">
-              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
-              Save Folder
-            </Button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default function ConnectionCard({ connection: rawConnection, onDelete, onUpdate }) {
   const [open, setOpen] = useState(true);
@@ -214,9 +142,6 @@ export default function ConnectionCard({ connection: rawConnection, onDelete, on
             <>
               <div className="px-5 py-4">
                 <ConnectionActions client={connection} onUpdate={handleUpdate} />
-              </div>
-              <div className="px-5 py-4">
-                <SharePointFolderSection connection={rawConnection} onUpdate={handleUpdate} />
               </div>
               <div className="px-5 py-4">
                 <CredentialsForm client={connection} onUpdate={handleUpdate} />

@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Database, Plus, Pencil, Trash2, ToggleLeft, ToggleRight, Play, AlertTriangle, Loader2, XCircle } from "lucide-react";
+import { Database, Plus, Pencil, Trash2, ToggleLeft, ToggleRight, Play, AlertTriangle, Loader2, XCircle, FolderOpen, Download } from "lucide-react";
 import moment from "moment";
 import SyncJobDialog from "@/components/client/SyncJobDialog";
 import CollapsibleCard from "@/components/ui/CollapsibleCard";
@@ -151,6 +151,17 @@ export default function SyncJobsManager({ client }) {
                         )}
                         {job.record_filters?.length > 0 && (
                           <span>{job.record_filters.length} filter{job.record_filters.length !== 1 ? "s" : ""}</span>
+                        )}
+                        {job.output_sharepoint && (
+                          <span className="flex items-center gap-1">
+                            <FolderOpen className="h-3 w-3" />
+                            {job.sharepoint_folder_path ? job.sharepoint_folder_path : "SharePoint (no folder set)"}
+                          </span>
+                        )}
+                        {job.output_local && (
+                          <span className="flex items-center gap-1">
+                            <Download className="h-3 w-3" />Local download
+                          </span>
                         )}
                         {job.last_run_at && (
                           <span>Last run {moment(job.last_run_at).fromNow()}</span>
