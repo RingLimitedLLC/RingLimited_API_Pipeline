@@ -16,7 +16,12 @@ const getNestedValue = (obj, path) => {
 };
 
 const csvEscape = (value) => {
-  const str = String(value ?? '');
+  // Arrays and objects must be serialized before escaping, otherwise
+  // Array.toString() produces "val1,val2" (breaks CSV columns) and
+  // Object.toString() produces "[object Object]".
+  const str = (value !== null && typeof value === 'object')
+    ? JSON.stringify(value)
+    : String(value ?? '');
   if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
     return `"${str.replace(/"/g, '""')}"`;
   }

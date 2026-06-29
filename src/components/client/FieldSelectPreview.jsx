@@ -3,7 +3,7 @@ import ReactDOM from "react-dom";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { X, Loader2, RefreshCw, Table2, AlertTriangle, CheckSquare, Square } from "lucide-react";
+import { X, Loader2, RefreshCw, Table2, AlertTriangle, CheckSquare, Square, Copy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -20,6 +20,8 @@ export default function FieldSelectPreview({ open, onClose, onConfirm, client, o
   const [selected, setSelected] = useState(new Set(initialSelected));
   const [fetched, setFetched] = useState(false);
   const [activeRow, setActiveRow] = useState(null);
+  const [activeCell, setActiveCell] = useState(null); // { row, col }
+  const [copied, setCopied] = useState(false);
 
   const fetchData = async () => {
     const wooPage = (!objectType || objectType === "Custom")
@@ -71,6 +73,8 @@ export default function FieldSelectPreview({ open, onClose, onConfirm, client, o
       setColumns([]);
       setError(null);
       setActiveRow(null);
+      setActiveCell(null);
+      setCopied(false);
     }
   }, [open]);
 
@@ -98,11 +102,29 @@ export default function FieldSelectPreview({ open, onClose, onConfirm, client, o
     onConfirm(Array.from(selected));
   };
 
+  const formatFull = (v) => {
+    if (v === null || v === undefined) return "(empty)";
+    if (typeof v === "object") return JSON.stringify(v, null, 2);
+    return String(v);
+  };
+
+  const formatDisplay = (v) => {
+    if (typeof v === "object" && v !== null) return JSON.stringify(v);
+    return String(v);
+  };
+
+  const handleCopyCell = async () => {
+    const v = records[activeCell?.row]?.[activeCell?.col];
+    await navigator.clipboard.writeText(formatFull(v));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
   const cellValue = (row, col) => {
     const v = row?.[col];
     if (v === null || v === undefined) return <span className="text-slate-300 italic text-xs">—</span>;
     if (typeof v === "boolean") return <span className={cn("font-mono text-xs", v ? "text-emerald-600" : "text-red-400")}>{String(v)}</span>;
-    return <span className="font-mono text-xs truncate">{String(v)}</span>;
+    return <span className="font-mono text-xs truncate">{formatDisplay(v)}</span>;
   };
 
   if (!open) return null;
@@ -228,17 +250,24 @@ export default function FieldSelectPreview({ open, onClose, onConfirm, client, o
                     </td>
                     {columns.map(col => {
                       const isSel = selected.has(col);
+                      const isActiveCellHere = activeCell?.row === ri && activeCell?.col === col;
                       return (
                         <td
                           key={col}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveCell(isActiveCellHere ? null : { row: ri, col });
+                            setCopied(false);
+                          }}
                           className={cn(
-                            "px-3 py-1.5 border-r border-b max-w-[240px] truncate transition-colors",
+                            "px-3 py-1.5 border-r border-b max-w-[240px] truncate transition-colors cursor-pointer",
+                            isActiveCellHere ? "bg-amber-200 border-amber-300" :
                             ri === activeRow && isSel ? "bg-indigo-100 border-indigo-200" :
                             ri === activeRow ? "bg-amber-50 border-amber-100" :
                             isSel ? "bg-indigo-50 border-indigo-100" :
                             "border-slate-100"
                           )}
-                          title={String(row?.[col] ?? "")}
+                          title={formatFull(row?.[col])}
                         >
                           {cellValue(row, col)}
                         </td>
@@ -250,6 +279,35 @@ export default function FieldSelectPreview({ open, onClose, onConfirm, client, o
             </table>
           )}
         </div>
+
+        {/* Cell inspector — shown when a data cell is clicked */}
+        {activeCell && records[activeCell.row] && (
+          <div className="shrink-0 border-t border-slate-700 bg-slate-900 px-4 py-2 flex items-start gap-3 max-h-40">
+            <div className="shrink-0 pt-0.5">
+              <span className="text-xs font-mono text-indigo-300 font-semibold">{activeCell.col}</span>
+            </div>
+            <pre className="text-xs font-mono text-emerald-300 flex-1 overflow-auto whitespace-pre-wrap break-all leading-relaxed">
+              {formatFull(records[activeCell.row][activeCell.col])}
+            </pre>
+            <div className="flex items-center gap-1 shrink-0 pt-0.5">
+              <button
+                onClick={handleCopyCell}
+                title="Copy full value"
+                className="flex items-center gap-1 px-2 py-1 rounded text-xs text-slate-300 hover:text-white hover:bg-slate-700 transition-colors"
+              >
+                {copied
+                  ? <><Check className="h-3 w-3 text-emerald-400" /><span className="text-emerald-400">Copied</span></>
+                  : <><Copy className="h-3 w-3" /><span>Copy</span></>}
+              </button>
+              <button
+                onClick={() => setActiveCell(null)}
+                className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Footer */}
         <div className="shrink-0 px-5 py-3 border-t bg-slate-50 flex items-center gap-4">
