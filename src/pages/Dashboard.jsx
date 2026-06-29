@@ -12,7 +12,10 @@ export default function Dashboard() {
 
   const { data: clients = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ["clients"],
-    queryFn: () => base44.entities.Clients.list("-created_date"),
+    queryFn: async () => {
+      const all = await base44.entities.Clients.list("-created_date");
+      return all.filter((c) => c.status !== "archived");
+    },
     retry: 1,
   });
 

@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ChevronRight, ExternalLink, Trash2 } from "lucide-react";
 import moment from "moment";
+import { toast } from "sonner";
 
 const statusColors = {
   "Connected": "bg-emerald-100 text-emerald-700 border-emerald-200",
@@ -40,10 +41,32 @@ export default function ClientsTable({ clients, isLoading, onDeleted }) {
     if (!pendingDelete) return;
     setDeleting(true);
     try {
-      await base44.entities.Clients.delete(pendingDelete.id);
+      const client = pendingDelete;
+
+      // 1. Fetch all connections — their records hold the 1Password item IDs
+      const connections = await base44.entities.Connections.filter({ client_id: client.id });
+
+      for (const conn of connections) {
+        // 2. Delete SyncJobs for this connection (SyncJobs use connection.id as client_id)
+        const jobs = await base44.entities.SyncJobs.filter({ client_id: conn.id });
+        await Promise.all(jobs.map((j) => base44.entities.SyncJobs.delete(j.id)));
+
+        // 3. Delete the Connection — server hook fires deleteConnectionCredentials,
+        //    which uses connection.credential_item_id to purge the 1Password vault item
+        await base44.entities.Connections.delete(conn.id);
+      }
+
+      // 4. Archive all campaigns (preserves FK references on log records)
+      const campaigns = await base44.entities.Campaigns.filter({ client_id: client.id });
+      await Promise.all(campaigns.map((c) => base44.entities.Campaigns.update(c.id, { status: "archived" })));
+
+      // 5. Archive the client record (not a hard delete — keeps log references intact)
+      await base44.entities.Clients.update(client.id, { status: "archived" });
+
+      toast.success(`${client.client_name} removed — all credentials and pipelines deleted.`);
       onDeleted?.();
     } catch (err) {
-      console.error("Delete failed:", err);
+      toast.error(`Failed to remove client: ${err.message}`);
     } finally {
       setDeleting(false);
       setPendingDelete(null);
@@ -142,10 +165,17 @@ export default function ClientsTable({ clients, isLoading, onDeleted }) {
       <AlertDialog open={!!pendingDelete} onOpenChange={(open) => !open && setPendingDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {pendingDelete?.client_name}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete the client record and any saved credentials.
-              This action cannot be undone.
+            <AlertDialogTitle>Remove {pendingDelete?.client_name}?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm text-slate-600">
+                <p>This will:</p>
+                <ul className="list-disc list-inside space-y-1 text-slate-500">
+                  <li>Permanently delete all connections and vault credentials</li>
+                  <li>Stop and delete all sync pipelines</li>
+                  <li>Archive the client and campaign records</li>
+                </ul>
+                <p>Historical sync logs are preserved. This cannot be undone.</p>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -155,7 +185,7 @@ export default function ClientsTable({ clients, isLoading, onDeleted }) {
               disabled={deleting}
               className="bg-red-600 hover:bg-red-700 text-white"
             >
-              {deleting ? "Deleting…" : "Delete"}
+              {deleting ? "Removing…" : "Remove Client"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -49,6 +49,11 @@ const DEFAULTS = {
   field_mappings: [],
   record_filters: [],
   is_enabled: true,
+  frequency_type: "manual",
+  interval_value: 1,
+  interval_unit: "hours",
+  scheduled_time: "08:00",
+  scheduled_day: "1",
   date_filter_type: "none",
   date_filter_field: "",
   date_filter_relative_days: 30,
@@ -196,6 +201,11 @@ export default function SyncJobDialog({ open, onClose, onSaved, client, job }) {
       record_filters: form.record_filters || [],
       campaign_name: client?.campaign_name || "",
       is_enabled: form.is_enabled,
+      frequency_type: form.frequency_type,
+      interval_value: form.frequency_type === "interval" ? Number(form.interval_value) : null,
+      interval_unit: form.frequency_type === "interval" ? form.interval_unit : null,
+      scheduled_time: (form.frequency_type === "daily" || form.frequency_type === "weekly") ? form.scheduled_time : null,
+      scheduled_day: form.frequency_type === "weekly" ? form.scheduled_day : null,
       api_endpoint: form.api_endpoint,
       api_method: form.api_method,
       api_auth_type: form.api_auth_type,
@@ -568,24 +578,106 @@ export default function SyncJobDialog({ open, onClose, onSaved, client, job }) {
             )}
           </div>
 
+          {/* Schedule */}
+          <div className="border rounded-lg overflow-hidden">
+            <div className="px-4 py-3 bg-slate-50 border-b">
+              <Label className="text-xs font-medium text-slate-700">Schedule</Label>
+              <p className="text-xs text-slate-400 mt-0.5">How often should this pipeline run automatically?</p>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-slate-500">Frequency</Label>
+                <Select value={form.frequency_type} onValueChange={v => set("frequency_type", v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="manual">Manual only</SelectItem>
+                    <SelectItem value="interval">Recurring interval</SelectItem>
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {form.frequency_type === "interval" && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500 shrink-0">Every</span>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={form.interval_value}
+                    onChange={e => set("interval_value", e.target.value)}
+                    className="w-20"
+                  />
+                  <Select value={form.interval_unit} onValueChange={v => set("interval_unit", v)}>
+                    <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="minutes">minutes</SelectItem>
+                      <SelectItem value="hours">hours</SelectItem>
+                      <SelectItem value="days">days</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {(form.frequency_type === "daily" || form.frequency_type === "weekly") && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-slate-500">Time (24-hour)</Label>
+                  <Input
+                    type="time"
+                    value={form.scheduled_time}
+                    onChange={e => set("scheduled_time", e.target.value)}
+                    className="w-36"
+                  />
+                </div>
+              )}
+
+              {form.frequency_type === "weekly" && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-slate-500">Day of week</Label>
+                  <Select value={form.scheduled_day} onValueChange={v => set("scheduled_day", v)}>
+                    <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"].map((d, i) => (
+                        <SelectItem key={i} value={String(i)}>{d}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Filename */}
           <div className="space-y-1.5">
             <Label className="text-xs font-medium text-slate-500">SharePoint CSV Filename</Label>
             {(() => {
               const typePrefix = form.job_type === "Target" ? "T" : form.job_type === "Suppression" ? "S" : "C";
               const clientName = client?.client_name || "Client";
-              const today = format(new Date(), "yyyyMMdd");
+              const multiDaily =
+                form.frequency_type === "interval" &&
+                (form.interval_unit === "minutes" ||
+                  (form.interval_unit === "hours" && Number(form.interval_value) < 24));
+              const dateStamp = multiDaily
+                ? format(new Date(), "yyyy-MM-dd-HH_mm")
+                : format(new Date(), "yyyy-MM-dd");
               const jobName = form.job_name || "{Pipeline Name}";
-              const autoName = `${typePrefix}_X_${clientName}_${today}_${jobName}`;
+              const autoName = `${typePrefix}_X_${clientName}_${dateStamp}_${jobName}`;
+              const pattern = multiDaily ? "YYYY-MM-DD-HH_MM" : "YYYY-MM-DD";
               return (
-                <div className="flex items-center gap-0">
-                  <div className="flex-1 flex items-center h-9 px-3 rounded-l-md border bg-slate-50 font-mono text-xs text-slate-700 truncate">
-                    {autoName}
+                <div className="space-y-1">
+                  <div className="flex items-center gap-0">
+                    <div className="flex-1 flex items-center h-9 px-3 rounded-l-md border bg-slate-50 font-mono text-xs text-slate-700 truncate">
+                      {autoName}
+                    </div>
+                    <span className="inline-flex items-center px-3 h-9 border border-l-0 rounded-r-md bg-slate-100 text-slate-500 text-xs font-mono">.csv</span>
                   </div>
-                  <span className="inline-flex items-center px-3 h-9 border border-l-0 rounded-r-md bg-slate-100 text-slate-500 text-xs font-mono">.csv</span>
+                  <p className="text-xs text-slate-400">
+                    Pattern: <span className="font-mono">{typePrefix}_X_ClientName_{pattern}_PipelineName</span>
+                    {multiDaily && <span className="text-amber-600 ml-1">— datetime stamp used for intra-day runs</span>}
+                  </p>
                 </div>
               );
             })()}
-            <p className="text-xs text-slate-400">Filename is generated at run time: type prefix, client name, run date, and pipeline name.</p>
           </div>
 
           {/* API Config — for generic API connections only (WooCommerce handles auth via credentials) */}
