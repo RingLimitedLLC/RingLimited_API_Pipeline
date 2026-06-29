@@ -41,9 +41,14 @@ const getAccessToken = async () => {
   return tokenCache.value;
 };
 
-const graphGet = async (path) => {
+const graphGet = async (pathOrUrl) => {
   const token = await getAccessToken();
-  const response = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
+  // Accept both relative paths (/sites/...) and absolute nextLink URLs
+  const url = pathOrUrl.startsWith('https://')
+    ? pathOrUrl
+    : `https://graph.microsoft.com/v1.0${pathOrUrl}`;
+
+  const response = await fetch(url, {
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: 'application/json',
@@ -208,11 +213,21 @@ export const browseFolder = async (itemId = null) => {
     ? `/sites/${siteId}/drive/items/${itemId}/children`
     : `/sites/${siteId}/drive/root/children`;
 
-  const data = await graphGet(
-    `${basePath}?$select=id,name,folder,webUrl,parentReference&$orderby=name asc&$top=200`,
-  );
+  // Collect all pages — Graph returns up to 200 items per page and
+  // includes @odata.nextLink when more pages exist.
+  const allValues = [];
+  let nextLink = `${basePath}?$select=id,name,folder,webUrl&$orderby=name asc&$top=200`;
+  let pageCount = 0;
+  const PAGE_LIMIT = 50; // safety cap: 50 × 200 = 10 000 items max
 
-  const items = (data.value || [])
+  while (nextLink && pageCount < PAGE_LIMIT) {
+    const data = await graphGet(nextLink);
+    allValues.push(...(data.value || []));
+    nextLink = data['@odata.nextLink'] ?? null;
+    pageCount++;
+  }
+
+  const items = allValues
     .filter((item) => item.folder !== undefined)
     .map((item) => ({
       id: item.id,
