@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -7,11 +7,13 @@ import { ArrowLeft, Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import TeamAssignment from "@/components/client/TeamAssignment";
 import ConnectionCard from "@/components/client/ConnectionCard";
+import AddConnectionDialog from "@/components/client/AddConnectionDialog";
 
 export default function ClientDetail() {
   const urlParams = new URLSearchParams(window.location.search);
   const clientId = urlParams.get("id");
   const queryClient = useQueryClient();
+  const [showAddConnection, setShowAddConnection] = useState(false);
 
   const { data: client, isLoading: clientLoading, refetch: refetchClient } = useQuery({
     queryKey: ["client", clientId],
@@ -90,6 +92,14 @@ export default function ClientDetail() {
               <span className="ml-2 text-xs font-normal text-slate-400">{connections.length}</span>
             )}
           </h2>
+          <Button
+            size="sm"
+            onClick={() => setShowAddConnection(true)}
+            className="gap-1.5 text-xs h-8"
+            style={{ backgroundColor: "#afd741" }}
+          >
+            <Plus className="h-3.5 w-3.5" /> Add Connection
+          </Button>
         </div>
 
         {connectionsLoading && (
@@ -115,6 +125,14 @@ export default function ClientDetail() {
           />
         ))}
       </div>
+
+      <AddConnectionDialog
+        open={showAddConnection}
+        onOpenChange={setShowAddConnection}
+        client={client}
+        campaigns={campaigns}
+        onCreated={handleUpdate}
+      />
     </div>
   );
 }
