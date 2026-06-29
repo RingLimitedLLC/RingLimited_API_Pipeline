@@ -168,23 +168,41 @@ export const runSyncJob = async (syncJobId, connectionId) => {
     const clientName = clientEntity?.client_name || connection.client_name || 'Client';
 
     const typePrefix = syncJob.job_type === 'Target' ? 'T' : syncJob.job_type === 'Suppression' ? 'S' : 'C';
-    const runDate = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+
+    // Use datetime stamp when this pipeline runs more than once per day
+    const isMultiDaily =
+      syncJob.frequency_type === 'interval' &&
+      (syncJob.interval_unit === 'minutes' ||
+        (syncJob.interval_unit === 'hours' && Number(syncJob.interval_value || 1) < 24));
+    const pad = (n) => String(n).padStart(2, '0');
+    const now = new Date();
+    const runDate = isMultiDaily
+      ? `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}_${pad(now.getMinutes())}`
+      : now.toISOString().slice(0, 10);
+
     const filename = `${typePrefix}_X_${clientName}_${runDate}_${syncJob.job_name || 'job'}.csv`;
 
     // ── Step 6: write to SharePoint ──────────────────────────────────────────
-    const folderPath = connection.sharepoint_folder_path || '';
-    const folderItemId = connection.sharepoint_folder_id || '';
+    // Folder ID + path live on the SyncJob. Fall back to Connection for pipelines
+    // created before this architecture change.
+    const writeToSharePoint = syncJob.output_sharepoint !== false;
+    const folderItemId = syncJob.sharepoint_folder_id || connection.sharepoint_folder_id || '';
+    const folderPath = syncJob.sharepoint_folder_path || connection.sharepoint_folder_path || '';
 
-    if (!folderItemId && !folderPath) {
-      throw new Error(
-        'No SharePoint output folder configured on this connection. ' +
-        'Edit the connection and select a destination folder in the SharePoint settings.',
-      );
+    let sharepointUrl = null;
+
+    if (writeToSharePoint) {
+      if (!folderItemId && !folderPath) {
+        throw new Error(
+          'No SharePoint output folder configured for this pipeline. ' +
+          'Open the pipeline settings and set a destination folder in the Output Destinations section.',
+        );
+      }
+      console.log(`[SyncExecutor] Writing ${recordCount} records → ${filename} (folder: ${folderPath || folderItemId})`);
+      const writeResult = await writeFileToFolder(folderItemId, folderPath, filename, csvContent);
+      sharepointUrl = writeResult.webUrl;
+      console.log(`[SyncExecutor] SharePoint write OK: ${sharepointUrl}`);
     }
-
-    console.log(`[SyncExecutor] Writing ${recordCount} records → ${filename} (folder: ${folderPath || '(item id)'})`);
-    const writeResult = await writeFileToFolder(folderItemId, folderPath, filename, csvContent);
-    console.log(`[SyncExecutor] SharePoint write OK: ${writeResult.webUrl}`);
 
     status = 'Success';
     result = {
@@ -193,8 +211,7 @@ export const runSyncJob = async (syncJobId, connectionId) => {
       records_after_filter: filteredRecords.length,
       records_processed: recordCount,
       filename,
-      folder: folderPath,
-      sharepoint_url: writeResult.webUrl,
+      ...(writeToSharePoint && { folder: folderPath, sharepoint_url: sharepointUrl }),
     };
   } catch (err) {
     errorMessage = err.message;
