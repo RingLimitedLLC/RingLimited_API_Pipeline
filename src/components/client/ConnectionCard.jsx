@@ -11,8 +11,7 @@ import SyncJobsManager from "./SyncJobsManager";
 import SyncLogsTable from "./SyncLogsTable";
 import EventsTable from "./EventsTable";
 import SharePointDeliveryTable from "./SharePointDeliveryTable";
-import InboundReceiptsLog from "./InboundReceiptsLog";
-import InboundPushManager from "./InboundPushManager";
+import WebhookEndpointCard from "./WebhookEndpointCard";
 
 const PLATFORM_ICONS = {
   woocommerce: ShoppingCart,
@@ -38,12 +37,15 @@ export default function ConnectionCard({ connection: rawConnection, onDelete, on
   const connection = sanitizeConnection(rawConnection);
 
   const isInbound = connection.direction === "inbound";
+  const isWebhookType = connection.connection_type === "webhook_only" || connection.connection_type === "client_post";
   const Icon = PLATFORM_ICONS[connection.connection_type] ?? Plug;
 
+  // Fetch sync logs for outbound connections and inbound webhook types
+  // (webhook receipts are now written to SyncLogs with sync_type "Inbound")
   const { data: syncLogs = [], refetch: refetchLogs } = useQuery({
     queryKey: ["syncLogs", "connection", connection.id],
     queryFn: () => base44.entities.SyncLogs.filter({ client_id: connection.client_id }, "-created_date", 10),
-    enabled: !isInbound,
+    enabled: !isInbound || isWebhookType,
   });
 
   const { data: events = [], refetch: refetchEvents } = useQuery({
@@ -126,15 +128,21 @@ export default function ConnectionCard({ connection: rawConnection, onDelete, on
         <div className="border-t border-slate-100 divide-y divide-slate-100">
           {isInbound ? (
             <>
-              <div className="px-5 py-4">
-                <InboundPushManager client={rawConnection} />
-              </div>
-              <div className="px-5 py-4">
-                <InboundReceiptsLog clientId={connection.client_id} />
-              </div>
-              {(connection.connection_type === "client_post" || connection.connection_type === "webhook_only") && (
+              {isWebhookType ? (
+                <>
+                  <div className="px-5 py-4">
+                    <WebhookEndpointCard connection={rawConnection} onUpdate={handleUpdate} />
+                  </div>
+                  <div className="px-5 py-4">
+                    <CredentialsForm client={connection} onUpdate={handleUpdate} />
+                  </div>
+                  <div className="px-5 py-4">
+                    <SyncLogsTable logs={syncLogs} />
+                  </div>
+                </>
+              ) : (
                 <div className="px-5 py-4">
-                  <CredentialsForm client={connection} onUpdate={handleUpdate} />
+                  <p className="text-sm text-slate-400">No configuration UI for this inbound connection type.</p>
                 </div>
               )}
             </>

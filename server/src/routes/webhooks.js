@@ -1,136 +1,184 @@
 import crypto from 'node:crypto';
 import express from 'express';
-import { config } from '../config.js';
-import {
-  getConnectionByClientName,
-  isValidClientName,
-  normalizeClientName,
-} from '../services/cosmosConnectionStore.js';
-import {
-  getOnePasswordFieldValue,
-  getOnePasswordItem,
-} from '../services/onePasswordService.js';
+import { getEntityById, createEntity } from '../services/entityStore.js';
+import { getConnectionCredentials } from '../services/onePasswordService.js';
+import { writeFileToFolder } from '../services/sharepointService.js';
 
 const router = express.Router();
-const inboundDirections = new Set(['inbound', 'both']);
-const activeStatuses = new Set(['active', 'connected', 'enabled']);
+
+// Connection types that accept inbound HTTP pushes via this route
+const INBOUND_TYPES = new Set(['webhook_only', 'client_post']);
 
 const normalizeSignature = (value = '') => {
-  const signature = String(value).trim();
-  return signature.toLowerCase().startsWith('sha256=')
-    ? signature.slice('sha256='.length)
-    : signature;
+  const sig = String(value).trim();
+  return sig.toLowerCase().startsWith('sha256=') ? sig.slice('sha256='.length) : sig;
 };
 
-const timingSafeCompare = (received, expected) => {
-  const receivedBuffer = Buffer.from(received);
-  const expectedBuffer = Buffer.from(expected);
-
-  return (
-    receivedBuffer.length === expectedBuffer.length
-    && crypto.timingSafeEqual(receivedBuffer, expectedBuffer)
-  );
-};
-
-const resolveVaultId = (connection = {}) => (
-  connection.vaultId
-  || connection.onepassword_vault_uuid
-  || connection.onePasswordVaultUuid
-  || ''
-);
-
-const resolveVaultItemId = (connection = {}) => (
-  connection.vaultItemId
-  || connection.onepassword_item_id
-  || connection.onePasswordItemId
-  || connection.credential_item_id
-  || ''
-);
-
-const isConnectionActive = (connection = {}) => (
-  activeStatuses.has(String(connection.status || connection.connection_status || '').toLowerCase())
-);
-
-const acceptsInboundWebhooks = (connection = {}) => (
-  inboundDirections.has(String(connection.direction || '').toLowerCase())
-);
-
-router.post('/:clientName', async (req, res) => {
-  const clientName = normalizeClientName(req.params.clientName);
-
-  if (!isValidClientName(clientName)) {
-    return res.status(400).json({ error: 'invalid clientName' });
+// Constant-time comparison — prevents timing-attack credential enumeration
+const safeCompare = (a, b) => {
+  try {
+    const aBuf = Buffer.isBuffer(a) ? a : Buffer.from(String(a));
+    const bBuf = Buffer.isBuffer(b) ? b : Buffer.from(String(b));
+    if (aBuf.length !== bBuf.length) return false;
+    return crypto.timingSafeEqual(aBuf, bBuf);
+  } catch {
+    return false;
   }
+};
+
+const csvEscape = (value) => {
+  const str = (value !== null && typeof value === 'object')
+    ? JSON.stringify(value)
+    : String(value ?? '');
+  return (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r'))
+    ? `"${str.replace(/"/g, '""')}"`
+    : str;
+};
+
+const toCsv = (rows) => {
+  if (!rows.length) return '';
+  // Union of all keys across all rows so sparse records still get every column
+  const headers = [...new Set(rows.flatMap((r) => Object.keys(r)))];
+  return [
+    headers.map(csvEscape).join(','),
+    ...rows.map((r) => headers.map((h) => csvEscape(r[h] ?? '')).join(',')),
+  ].join('\n');
+};
+
+// POST /webhooks/:connectionId
+// Each inbound Connection has its own unique, stable endpoint derived from its ID.
+router.post('/:connectionId', async (req, res) => {
+  const { connectionId } = req.params;
 
   try {
-    const connection = await getConnectionByClientName(clientName);
+    // ── 1. Load the Connection record ──────────────────────────────────────────
+    const connection = await getEntityById('Connections', connectionId);
     if (!connection) {
-      return res.status(404).json({ error: 'unknown client' });
+      return res.status(404).json({ error: 'unknown connection' });
     }
 
-    if (!acceptsInboundWebhooks(connection)) {
-      return res.status(403).json({ error: 'connection does not accept inbound webhooks' });
+    const connectionType = connection.connection_type;
+    if (!INBOUND_TYPES.has(connectionType)) {
+      return res.status(403).json({ error: 'this connection does not accept inbound webhooks' });
     }
 
-    if (!isConnectionActive(connection)) {
-      return res.status(403).json({ error: 'connection not active' });
-    }
-
-    const vaultId = resolveVaultId(connection);
-    const vaultItemId = resolveVaultItemId(connection);
-
-    if (!vaultId || !vaultItemId) {
-      console.error(`[webhooks] Missing 1Password reference for "${clientName}"`);
-      return res.status(500).json({ error: 'integration not configured' });
-    }
-
+    // ── 2. Authenticate ────────────────────────────────────────────────────────
+    // Raw body is preserved by the express.raw() middleware mounted in server.js
     const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from('');
-    const signature = req.get(config.webhookSignatureHeader);
-    if (!signature) {
-      return res.status(401).json({ error: 'missing signature' });
+
+    const credentials = await getConnectionCredentials(connection);
+    if (!credentials.configured) {
+      console.error(`[webhooks] Credentials not configured for connection "${connectionId}"`);
+      return res.status(500).json({ error: 'credentials not configured for this connection' });
     }
 
-    const item = await getOnePasswordItem(vaultId, vaultItemId);
-    const secret = getOnePasswordFieldValue(item, [
-      connection.webhookSecretField,
-      connection.webhook_secret_field,
-      config.webhookSecretField,
-      'webhook_secret',
-      'inbound_api_key',
-      'PASSWORD',
-    ]);
-
-    if (!secret) {
-      console.error(`[webhooks] Signing secret not found for "${clientName}"`);
-      return res.status(500).json({ error: 'integration not configured' });
+    if (connectionType === 'webhook_only') {
+      // HMAC-SHA256 — client signs the raw body with the shared webhook_secret
+      const signature = req.get('x-signature') || req.get('x-hub-signature-256') || '';
+      if (!signature) {
+        return res.status(401).json({
+          error: 'missing x-signature header',
+          hint: 'Compute HMAC-SHA256(raw_body, webhook_secret) and send as: x-signature: sha256=<hex>',
+        });
+      }
+      const secret = credentials.fields?.webhook_secret;
+      if (!secret) {
+        return res.status(500).json({ error: 'webhook_secret not set — add it in the Credentials section' });
+      }
+      const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+      if (!safeCompare(normalizeSignature(signature), expected)) {
+        return res.status(401).json({ error: 'invalid signature' });
+      }
+    } else {
+      // client_post — bearer token in Authorization header
+      const authHeader = req.get('Authorization') || '';
+      const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+      if (!token) {
+        return res.status(401).json({
+          error: 'missing Authorization header',
+          hint: 'Send: Authorization: Bearer <api_key>',
+        });
+      }
+      const apiKey = credentials.fields?.inbound_api_key;
+      if (!apiKey) {
+        return res.status(500).json({ error: 'inbound_api_key not set — add it in the Credentials section' });
+      }
+      if (!safeCompare(token, apiKey)) {
+        return res.status(401).json({ error: 'invalid API key' });
+      }
     }
 
-    const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
-    const received = normalizeSignature(signature);
-
-    if (!timingSafeCompare(received, expected)) {
-      return res.status(401).json({ error: 'invalid signature' });
-    }
-
+    // ── 3. Parse payload ───────────────────────────────────────────────────────
+    let payload;
     try {
-      JSON.parse(rawBody.toString('utf8'));
+      payload = JSON.parse(rawBody.toString('utf8'));
     } catch {
-      return res.status(400).json({ error: 'invalid JSON payload' });
+      return res.status(400).json({ error: 'request body must be valid JSON' });
     }
 
-    console.info(`[webhooks] Accepted webhook for "${clientName}" (${rawBody.length} bytes)`);
+    // Normalise to an array of records regardless of whether the client sends
+    // a single object or an array
+    const records = Array.isArray(payload) ? payload : [payload];
+    console.info(`[webhooks] Connection "${connectionId}" received ${records.length} record(s)`);
+
+    // ── 4. Write to SharePoint (if folder configured on the connection) ─────────
+    const startedAt = new Date().toISOString();
+    let status = 'Success';
+    let errorMessage = '';
+    let sharepointUrl = null;
+
+    const folderItemId = connection.sharepoint_folder_id || '';
+    const folderPath = connection.sharepoint_folder_path || '';
+
+    if (folderItemId || folderPath) {
+      try {
+        const now = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const ts = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}_${pad(now.getMinutes())}`;
+        const clientName = (connection.client_name || 'Client').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const filename = `I_X_${clientName}_${ts}_webhook.csv`;
+
+        const flatRecords = records.map((r) =>
+          typeof r === 'object' && r !== null ? r : { value: r },
+        );
+        const csvContent = toCsv(flatRecords);
+        const writeResult = await writeFileToFolder(folderItemId, folderPath, filename, csvContent);
+        sharepointUrl = writeResult.webUrl;
+        console.info(`[webhooks] SharePoint write OK → ${sharepointUrl}`);
+      } catch (writeErr) {
+        status = 'Failed';
+        errorMessage = `SharePoint write failed: ${writeErr.message}`;
+        console.error(`[webhooks] SharePoint write error for "${connectionId}":`, writeErr.message);
+      }
+    } else {
+      console.info(`[webhooks] No SharePoint folder on connection "${connectionId}" — data received, not forwarded`);
+    }
+
+    // ── 5. Log the receipt ─────────────────────────────────────────────────────
+    const finishedAt = new Date().toISOString();
+    createEntity('SyncLogs', {
+      client_id: connection.client_id,
+      connection_id: connection.id,
+      job_name: 'Inbound Webhook',
+      sync_type: 'Inbound',
+      status,
+      records_processed: records.length,
+      error_message: errorMessage,
+      started_at: startedAt,
+      finished_at: finishedAt,
+    }).catch((e) => console.error('[webhooks] Failed to write SyncLog:', e.message));
 
     return res.status(200).json({
       received: true,
-      clientName,
-      receivedAt: new Date().toISOString(),
+      records: records.length,
+      status,
+      receivedAt: finishedAt,
+      ...(sharepointUrl && { sharepoint_url: sharepointUrl }),
+      ...(errorMessage && { warning: errorMessage }),
     });
-  } catch (error) {
-    if (error.code === 'COSMOS_NOT_CONFIGURED') {
-      return res.status(503).json({ error: 'connection store not configured' });
-    }
 
-    console.error(`[webhooks] Handling failed for "${clientName}":`, error);
+  } catch (err) {
+    console.error(`[webhooks] Unhandled error for "${connectionId}":`, err);
     return res.status(500).json({ error: 'internal error' });
   }
 });
