@@ -134,9 +134,11 @@ router.post('/:connectionId', async (req, res) => {
       try {
         const now = new Date();
         const pad = (n) => String(n).padStart(2, '0');
-        const ts = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}_${pad(now.getMinutes())}`;
+        const pad3 = (n) => String(n).padStart(3, '0');
+        const ts = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}_${pad(now.getSeconds())}${pad3(now.getMilliseconds())}`;
+        const prefix = connectionType === 'webhook_only' ? 'pipelinewebhook' : 'pipelineclientpost';
         const clientName = (connection.client_name || 'Client').replace(/[^a-zA-Z0-9_-]/g, '_');
-        const filename = `I_X_${clientName}_${ts}_webhook.csv`;
+        const filename = `${prefix}_T_X_${clientName}_${ts}.csv`;
 
         const flatRecords = records.map((r) =>
           typeof r === 'object' && r !== null ? r : { value: r },
