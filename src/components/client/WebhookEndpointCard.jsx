@@ -41,7 +41,7 @@ export default function WebhookEndpointCard({ connection, onUpdate }) {
         connectionId: connection.id,
         samplePayload: parsed,
       });
-      setTestResult(result);
+      setTestResult(result.data ?? result);
     } catch (err) {
       setTestResult({ ok: false, message: err.message });
     } finally {
