@@ -33,4 +33,5 @@ export const config = {
   sharepointClientSecret: process.env.SHAREPOINT_CLIENT_SECRET || '',
   sharepointSiteUrl: process.env.SHAREPOINT_SITE_URL || '',
   notionIntegrationToken: process.env.NOTION_INTEGRATION_TOKEN || '',
+  azureSqlConnectionString: process.env.AZURE_SQL_CONNECTION_STRING || '',
 };

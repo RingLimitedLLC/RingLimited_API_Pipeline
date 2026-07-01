@@ -53,6 +53,7 @@ import GlobalSyncLog from './pages/GlobalSyncLog';
 import Alerts from './pages/Alerts';
 import AlertRules from './pages/AlertRules';
 import SyncHealth from './pages/SyncHealth';
+import Performance from './pages/Performance';
 import __Layout from './Layout.jsx';
 
 
@@ -63,6 +64,7 @@ export const PAGES = {
     "Alerts": Alerts,
     "AlertRules": AlertRules,
     "SyncHealth": SyncHealth,
+    "Performance": Performance,
 }
 
 export const pagesConfig = {

@@ -268,6 +268,23 @@ app.post('/api/functions/:functionName', async (req, res) => {
         }
       }
 
+      // For Simplifi: live API call to verify credentials and capture org ID
+      if (credentials.connectionType?.id === 'simplifi') {
+        try {
+          const { testSimplifiConnection } = await import('./services/simplifiService.js');
+          const result = await testSimplifiConnection(credentials.fields);
+          // Persist org_id on the connection for use in sync jobs
+          await updateEntity('Connections', connectionId, {
+            connection_status: 'Connected',
+            simplifi_org_id: String(result.org_id),
+          });
+          return res.json({ function: functionName, success: true, source: credentials.source, connection_type: 'simplifi', credential_field_status: credentials.fieldStatus || {}, ...result });
+        } catch (err) {
+          await updateEntity('Connections', connectionId, { connection_status: 'Error' });
+          return res.json({ function: functionName, success: false, source: credentials.source, connection_type: 'simplifi', credential_field_status: credentials.fieldStatus || {}, message: err.message });
+        }
+      }
+
       // For other connection types: credential presence is sufficient
       return res.json({ function: functionName, success: true, source: credentials.source, connection_type: credentials.connectionType?.id, credential_field_status: credentials.fieldStatus || {}, message: 'Credentials found in vault.' });
     }

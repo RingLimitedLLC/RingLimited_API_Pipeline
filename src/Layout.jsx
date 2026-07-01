@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { LayoutDashboard, Users, LogOut, Zap, Menu, ScrollText, Bell, ShieldAlert, Activity } from "lucide-react";
+import { LayoutDashboard, Users, LogOut, Zap, Menu, ScrollText, Bell, ShieldAlert, Activity, BarChart2 } from "lucide-react";
 import NotificationsBell from "@/components/notifications/NotificationsBell";
 import { Button } from "@/components/ui/button";
 
@@ -23,6 +23,7 @@ export default function Layout({ children, currentPageName }) {
   const navItems = [
   { name: "Dashboard", page: "Dashboard", icon: LayoutDashboard },
   { name: "Clients", page: "Dashboard", icon: Users },
+  { name: "Performance", page: "Performance", icon: BarChart2 },
   { name: "Sync Health", page: "SyncHealth", icon: Activity },
   { name: "API Activity Log", page: "GlobalSyncLog", icon: ScrollText },
   { name: "Alerts", page: "Alerts", icon: ShieldAlert },
@@ -62,7 +63,7 @@ export default function Layout({ children, currentPageName }) {
         <nav className="bg-[#194155] p-4 flex-1 space-y-1">
           {navItems.map((item) => {
             const isActive = currentPageName === item.page ||
-            currentPageName === "ClientDetail" && item.name === "Clients";
+            (currentPageName === "ClientDetail" && item.name === "Clients");
             return (
               <Link
                 key={item.name}
