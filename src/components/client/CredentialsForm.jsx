@@ -5,9 +5,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Save, Loader2, KeyRound, Plug, CheckCircle2, RotateCcw } from "lucide-react";
+import { Save, Loader2, KeyRound, Plug, CheckCircle2, RotateCcw, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import CollapsibleCard from "@/components/ui/CollapsibleCard";
+
+const generateSecret = () => {
+  const arr = new Uint8Array(32);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
+};
+
+const AUTO_GENERATE_FIELDS = new Set(["webhook_secret", "inbound_api_key"]);
 
 const FALLBACK_CONNECTION_TYPES = [
   {
@@ -184,8 +192,22 @@ export default function CredentialsForm({ client, onUpdate }) {
     });
     setFieldValues(getInitialFieldValues(client, connectionType));
     setSettings(getInitialSettings(client, connectionType));
-    setSecrets({});
-    setReplacing({});
+
+    // For webhook connection types, auto-generate a secret if none is stored yet
+    const status = parseStatus(client.credential_field_status);
+    const autoSecrets = {};
+    const autoReplacing = {};
+    for (const field of (connectionType.fields || [])) {
+      if (AUTO_GENERATE_FIELDS.has(field.key)) {
+        const stored = Boolean(status[field.key] || client[field.key] === "••SET••");
+        if (!stored) {
+          autoSecrets[field.key] = generateSecret();
+          autoReplacing[field.key] = true;
+        }
+      }
+    }
+    setSecrets(autoSecrets);
+    setReplacing(autoReplacing);
   }, [client, connectionTypes]);
 
   const activeType = useMemo(
@@ -349,17 +371,27 @@ export default function CredentialsForm({ client, onUpdate }) {
         ) : (
           <div className="flex gap-2">
             <Input
-              type="password"
+              type="text"
               autoFocus
               value={secrets[field.key] || ""}
               onChange={(e) => setSecrets((prev) => ({ ...prev, [field.key]: e.target.value }))}
               placeholder={field.placeholder || "••••••••"}
-              className="flex-1"
+              className="flex-1 font-mono text-xs"
             />
+            {AUTO_GENERATE_FIELDS.has(field.key) && (
+              <button
+                type="button"
+                onClick={() => setSecrets((prev) => ({ ...prev, [field.key]: generateSecret() }))}
+                className="text-indigo-500 hover:text-indigo-700 shrink-0"
+                title="Generate new random value"
+              >
+                <RefreshCw className="h-4 w-4" />
+              </button>
+            )}
             <button
               type="button"
               onClick={() => cancelReplacing(field.key)}
-              className="text-slate-400 hover:text-slate-600"
+              className="text-slate-400 hover:text-slate-600 shrink-0"
               title="Cancel"
             >
               <RotateCcw className="h-4 w-4" />

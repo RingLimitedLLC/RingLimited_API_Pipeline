@@ -1,13 +1,18 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
-import { Copy, Check, Globe, Key, ShieldCheck, FolderOpen, AlertTriangle } from "lucide-react";
+import { Copy, Check, Globe, Key, ShieldCheck, FolderOpen, AlertTriangle, Send, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import SharePointFolderPicker from "@/components/client/SharePointFolderPicker";
 import { toast } from "sonner";
+
+const DEFAULT_SAMPLE = JSON.stringify([{ test_field: "test_value", timestamp: new Date().toISOString() }], null, 2);
 
 export default function WebhookEndpointCard({ connection, onUpdate }) {
   const [copied, setCopied] = useState(null);
   const [savingFolder, setSavingFolder] = useState(false);
+  const [testPayload, setTestPayload] = useState(DEFAULT_SAMPLE);
+  const [testLoading, setTestLoading] = useState(false);
+  const [testResult, setTestResult] = useState(null);
 
   const isHmac = connection.connection_type === "webhook_only";
 
@@ -19,6 +24,29 @@ export default function WebhookEndpointCard({ connection, onUpdate }) {
     await navigator.clipboard.writeText(text);
     setCopied(label);
     setTimeout(() => setCopied(null), 2000);
+  };
+
+  const handleTestPush = async () => {
+    let parsed;
+    try {
+      parsed = JSON.parse(testPayload);
+    } catch {
+      toast.error("Sample payload is not valid JSON");
+      return;
+    }
+    setTestLoading(true);
+    setTestResult(null);
+    try {
+      const result = await base44.functions.invoke("testInboundWebhook", {
+        connectionId: connection.id,
+        samplePayload: parsed,
+      });
+      setTestResult(result);
+    } catch (err) {
+      setTestResult({ ok: false, message: err.message });
+    } finally {
+      setTestLoading(false);
+    }
   };
 
   const handleFolderChange = async (folder) => {
@@ -171,6 +199,59 @@ For questions, contact your DataOps representative.`;
           <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
             <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
             No folder selected — pushes will be received and logged but not forwarded to SharePoint.
+          </div>
+        )}
+      </div>
+
+      {/* Test push */}
+      <div className="space-y-2">
+        <p className="text-xs font-medium text-slate-500 flex items-center gap-1.5">
+          <Send className="h-3.5 w-3.5" />
+          Send Test Push
+        </p>
+        <p className="text-xs text-slate-400">
+          The server will sign this payload with the stored credentials and POST it to the live endpoint — a real end-to-end test.
+        </p>
+        <textarea
+          className="w-full h-28 text-xs font-mono bg-slate-50 border border-slate-200 rounded px-3 py-2 text-slate-700 resize-y focus:outline-none focus:ring-1 focus:ring-indigo-400"
+          value={testPayload}
+          onChange={(e) => { setTestPayload(e.target.value); setTestResult(null); }}
+          spellCheck={false}
+        />
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 text-xs gap-1.5"
+          onClick={handleTestPush}
+          disabled={testLoading}
+        >
+          {testLoading
+            ? <Loader2 className="h-3 w-3 animate-spin" />
+            : <Send className="h-3 w-3" />}
+          {testLoading ? "Sending…" : "Send Test"}
+        </Button>
+
+        {testResult && (
+          <div className={`rounded-lg border px-3 py-2.5 text-xs font-mono space-y-1 ${testResult.ok ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
+            <div className="flex items-center gap-1.5 font-medium text-sm font-sans">
+              {testResult.ok
+                ? <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                : <XCircle className="h-4 w-4 text-red-500" />}
+              <span className={testResult.ok ? "text-emerald-700" : "text-red-700"}>
+                {testResult.ok ? `${testResult.status} — ${testResult.response?.records ?? 0} record(s) received` : "Test failed"}
+              </span>
+            </div>
+            {testResult.response?.sharepoint_url && (
+              <p className="text-slate-500 truncate">
+                SharePoint: <a href={testResult.response.sharepoint_url} target="_blank" rel="noreferrer" className="text-indigo-600 underline">{testResult.response.sharepoint_url}</a>
+              </p>
+            )}
+            {testResult.response?.warning && (
+              <p className="text-amber-700">{testResult.response.warning}</p>
+            )}
+            {!testResult.ok && (
+              <p className="text-red-600">{testResult.message || testResult.response?.error || "Unknown error"}</p>
+            )}
           </div>
         )}
       </div>

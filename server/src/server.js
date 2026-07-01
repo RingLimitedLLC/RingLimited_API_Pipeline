@@ -457,6 +457,47 @@ app.post('/api/functions/:functionName', async (req, res) => {
     }
   }
 
+  if (functionName === 'testInboundWebhook') {
+    const { connectionId, samplePayload } = req.body || {};
+    if (!connectionId) return res.status(400).json({ ok: false, message: 'connection_id required' });
+    try {
+      const connection = await getEntityById('Connections', connectionId);
+      if (!connection) return res.status(404).json({ ok: false, message: 'Connection not found' });
+
+      const credentials = await getConnectionCredentials(connection);
+      if (!credentials.configured) return res.json({ ok: false, message: `Credentials not configured: ${credentials.message}` });
+
+      const connectionType = credentials.connectionType?.id || connection.connection_type;
+      const payload = samplePayload ?? [{ test_field: 'test_value', timestamp: new Date().toISOString() }];
+      const bodyStr = JSON.stringify(payload);
+      const bodyBuf = Buffer.from(bodyStr);
+
+      const headers = { 'Content-Type': 'application/json' };
+
+      if (connectionType === 'webhook_only') {
+        const secret = credentials.fields?.webhook_secret;
+        if (!secret) return res.json({ ok: false, message: 'webhook_secret not set in vault — add it in Credentials' });
+        const { createHmac } = await import('node:crypto');
+        const sig = createHmac('sha256', secret).update(bodyBuf).digest('hex');
+        headers['x-signature'] = `sha256=${sig}`;
+      } else if (connectionType === 'client_post') {
+        const apiKey = credentials.fields?.inbound_api_key;
+        if (!apiKey) return res.json({ ok: false, message: 'inbound_api_key not set in vault — add it in Credentials' });
+        headers['Authorization'] = `Bearer ${apiKey}`;
+      } else {
+        return res.json({ ok: false, message: `Connection type "${connectionType}" does not support inbound webhook testing` });
+      }
+
+      const port = config.port || 3001;
+      const webhookUrl = `http://localhost:${port}/webhooks/${connectionId}`;
+      const testRes = await fetch(webhookUrl, { method: 'POST', headers, body: bodyStr });
+      const data = await testRes.json().catch(() => ({}));
+      return res.json({ ok: testRes.ok, status: testRes.status, response: data });
+    } catch (err) {
+      return res.json({ ok: false, message: err.message });
+    }
+  }
+
   if (functionName === 'previewApiData') {
     const connectionId = req.body?.connection_id || req.body?.client_id;
     const endpoint = req.body?.woo_page || req.body?.endpoint || 'orders';
